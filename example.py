@@ -9,14 +9,14 @@ import matplotlib.pyplot as plt
 plt.close('all')
 plt.style.use('ggplot')
 
-X, y = make_classification(n_samples=50, n_features=300, n_classes=2,
+X, y = make_classification(n_samples=100, n_features=1000, n_classes=2,
                            random_state=414)
 X = X.astype(float)
 y = y.astype(float)
 
 eps = 1e-3  # the smaller it is the longer is the path
 lambda_max = np.linalg.norm(np.dot(X.T, 0.5 - y), ord=np.inf)
-n_lambdas = 50
+n_lambdas = 100
 lambda_ratio = eps ** (1. / (n_lambdas - 1))
 lambdas = lambda_max * (lambda_ratio ** np.arange(n_lambdas))
 
@@ -27,7 +27,7 @@ GAPSAFE = 2
 GAPSAFE_SEQ_pp = 3
 GAPSAFE_pp = 4
 STRONG_RULE = 10
-SAFE_STRONG_RULE = 666
+STRONG_GAP_SAFE = 666
 
 seq = " (Seq.)"
 seq_dyn = " (Seq. + Dyn.)"

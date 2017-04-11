@@ -1,6 +1,6 @@
 # Gap Safe screening rules for sparsity enforcing penalties.
 
-This package implements coordinate descent with Gap Safe screening rules https://arxiv.org/abs/1611.05780
+This package implements coordinate descent with Gap Safe screening rules. See our paper https://arxiv.org/abs/1611.05780 for more details.
 
 
 # Example in binary classification with sparse logistic regression
@@ -15,14 +15,14 @@ import matplotlib.pyplot as plt
 plt.close('all')
 plt.style.use('ggplot')
 
-X, y = make_classification(n_samples=50, n_features=300, n_classes=2,
+X, y = make_classification(n_samples=100, n_features=1000, n_classes=2,
                            random_state=414)
 X = X.astype(float)
 y = y.astype(float)
 
 eps = 1e-3  # the smaller it is the longer is the path
 lambda_max = np.linalg.norm(np.dot(X.T, 0.5 - y), ord=np.inf)
-n_lambdas = 50
+n_lambdas = 100
 lambda_ratio = eps ** (1. / (n_lambdas - 1))
 lambdas = lambda_max * (lambda_ratio ** np.arange(n_lambdas))
 
