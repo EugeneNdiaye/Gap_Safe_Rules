@@ -1,2 +1,2 @@
-# Gap_Safe_Rules
+# Gap_Safe_Rules https://arxiv.org/abs/1611.05780
 work in progress ...
