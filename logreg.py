@@ -11,6 +11,10 @@ GAPSAFE = 2
 GAPSAFE_SEQ_pp = 3
 GAPSAFE_pp = 4
 
+STRONG_RULE = 10
+
+SAFE_STRONG_RULE = 666
+
 
 def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=0,
                 warm_start_plus=False):
@@ -92,6 +96,7 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=0,
     n_1 = np.sum(y == 1)
     n_0 = n_samples - n_1
     tol = eps * max(1, min(n_1, n_0)) / float(n_samples)
+
     betas = np.zeros((n_lambdas, n_features))
     beta_init = np.zeros(n_features, dtype=float, order='F')
     disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
@@ -115,11 +120,34 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=0,
 
     for t in range(n_lambdas):
 
+        if t == 0:
+            lambda_prec = lambdas[0]
+        else:
+            lambda_prec = lambdas[t - 1]
+
+        if screening == SAFE_STRONG_RULE:
+
+            #TODO: cythonize this part
+            # reset the active set
+            disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
+
+            # Compute the strong active set
+            # check the validity of this rule
+            mask = np.where(np.abs(XTR) < 2 * lambdas[t] - lambda_prec)[0]
+            beta_init[mask] = 0.
+            disabled_features[mask] = 1
+
+            # solve the problem restricted to the strong active set
+            cd_logreg(X, y, beta_init, XTR, Xbeta, exp_Xbeta, residual,
+                      disabled_features, nrm2_y, norm_X2,
+                      lambdas[t], lambda_prec, tol, dual_scale, max_iter,
+                      f, screening, wstr_plus=1)
+
         gaps[t], dual_scale, n_iters[t], n_active_features[t] = \
             cd_logreg(X, y, beta_init, XTR, Xbeta, exp_Xbeta, residual,
                       disabled_features, nrm2_y, norm_X2,
-                      lambdas[t], tol, dual_scale, max_iter, f, screening,
-                      wstr_plus=0)
+                      lambdas[t], lambda_prec, tol, dual_scale, max_iter, f,
+                      screening, wstr_plus=0)
 
         betas[t, :] = beta_init.copy()
         if t == 0 and screening != NO_SCREENING:
@@ -130,10 +158,10 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=0,
 
             cd_logreg(X, y, beta_init, XTR, Xbeta, exp_Xbeta, residual,
                       disabled_features, nrm2_y, norm_X2,
-                      lambdas[t + 1], tol, dual_scale, max_iter, f,
-                      screening=screening, wstr_plus=1)
+                      lambdas[t + 1], lambda_prec, tol, dual_scale,
+                      max_iter, f, screening=screening, wstr_plus=1)
 
-        if gaps[t] > tol:
+        if abs(gaps[t]) > tol:
 
             print "warning: did not converge, t = ", t,
             print "gap = ", gaps[t], "eps = ", eps

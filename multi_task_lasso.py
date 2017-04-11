@@ -19,6 +19,10 @@ GAPSAFE = 3
 GAPSAFE_SEQ_pp = 4
 GAPSAFE_pp = 5
 
+STRONG_RULE = 10
+
+STRONG_GAP_SAFE = 666
+
 
 def multitask_lasso_path(X, y, screen=NO_SCREENING, beta_init=None,
                          lambdas=None, max_iter=100, f=10, eps=1e-4,
@@ -134,6 +138,7 @@ def multitask_lasso_path(X, y, screen=NO_SCREENING, beta_init=None,
 
     if screen == DGST3:
 
+        # print "j_star = ", j_star
         n_DGST3 = [X[:, j_star] * np.dot(X[:, j_star].T, y[:, k]) / lambdas[0]
                    for k in range(n_tasks)]
         n_DGST3 = np.array(n_DGST3).T
@@ -149,10 +154,34 @@ def multitask_lasso_path(X, y, screen=NO_SCREENING, beta_init=None,
 
     for t in range(n_lambdas):
 
+        if t == 0:
+            lambda_prec = lambdas[0]
+        else:
+            lambda_prec = lambdas[t - 1]
+
+        if screen == STRONG_GAP_SAFE:
+
+            # TODO: cythonize this part
+            # reset the active set
+            disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
+
+            # Compute the strong active set
+            mask = np.where(norm_row_XTR < 2 * lambdas[t] - lambda_prec)[0]
+            beta_init[mask, :] = 0.
+            disabled_features[mask] = 1
+
+            model = bcd_fast(X, y, beta_init, residual, XTR, norm_row_XTR,
+                             n_DGST3, norm2_n_DGST3, nTy_DGST3,
+                             n_samples, n_features, n_tasks,
+                             norm2_X, lambdas[t], lambdas[0], lambda_prec,
+                             dual_scale, max_iter, f, tol, screen,
+                             disabled_features, wstr_plus=1)
+
         model = bcd_fast(X, y, beta_init, residual, XTR, norm_row_XTR,
                          n_DGST3, norm2_n_DGST3, nTy_DGST3,
                          n_samples, n_features, n_tasks,
-                         norm2_X, lambdas[t], lambdas[0], dual_scale, max_iter,
+                         norm2_X, lambdas[t], lambdas[0], lambda_prec,
+                         dual_scale, max_iter,
                          f, tol, screen, disabled_features, wstr_plus=0)
 
         dual_gaps[t], dual_scale, n_iters[t], n_active_features[t] = model
@@ -167,7 +196,8 @@ def multitask_lasso_path(X, y, screen=NO_SCREENING, beta_init=None,
             bcd_fast(X, y, beta_init, residual, XTR, norm_row_XTR,
                      n_DGST3, norm2_n_DGST3, nTy_DGST3,
                      n_samples, n_features, n_tasks,
-                     norm2_X, lambdas[t + 1], lambdas[0], dual_scale, max_iter,
+                     norm2_X, lambdas[t + 1], lambdas[0], lambda_prec,
+                     dual_scale, max_iter,
                      f, tol, screen, disabled_features, wstr_plus=1)
 
         if abs(dual_gaps[t]) > tol:

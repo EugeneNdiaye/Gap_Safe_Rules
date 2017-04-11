@@ -22,6 +22,11 @@ GAPSAFE = 5
 GAPSAFE_SEQ_pp = 6
 GAPSAFE_pp = 7
 
+STRONG_RULE = 8
+TLFre = 9
+
+STRONG_GAP_SAFE = 666
+
 
 def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
              tau=0.5, lambda2=0, max_iter=30000, f=10, eps=1e-4,
@@ -118,6 +123,9 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
     """
 
     n_groups = len(size_groups)
+    # g_start = np.zeros(n_groups, order='F', dtype=np.intc)
+    # for i in range(1, n_groups):
+    #     g_start[i] = size_groups[i - 1] + g_start[i - 1]
     g_start = np.cumsum(size_groups, dtype=np.intc) - size_groups[0]
 
     if lambdas is None:
@@ -125,6 +133,14 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
 
     # Useful precomputation
     norm_X, norm_X_g, nrm2_y = precompute_norm(X, y, size_groups, g_start)
+    tol = eps * nrm2_y  # duality gap tolerance
+
+    # We take arbitrary values since they are not used by others rules
+    nDST3 = np.ones(1)
+    norm2_nDST3 = 1
+    tau_w_star = 1
+    g_max = np.ones(1)
+    len_g_max = 1
 
     if screen == DST3:
         if lambdas is not None:
@@ -135,10 +151,12 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
                              g_start)
         tau_w_star = tau + (1. - tau) * omega[imax]
 
-    else:  # We take arbitrary values since they are not used by others rules
-        nDST3 = np.ones(1)
-        norm2_nDST3 = 1
-        tau_w_star = 1
+    if screen == TLFre:
+        if lambdas is not None:
+            _, imax = build_lambdas(X, y, omega, size_groups, g_start)
+
+        g_max = range(g_start[imax], g_start[imax] + size_groups[imax])
+        len_g_max = len(g_max)
 
     n_lambdas = len(lambdas)
     n_samples, n_features = X.shape
@@ -151,6 +169,9 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
     norm2_X = np.asfortranarray(norm_X ** 2)
     norm2_X_g = np.asfortranarray(norm_X_g ** 2)
     omega = np.asfortranarray(omega)
+    g_start = np.asfortranarray(g_start, dtype=np.intc)
+    g_max = np.asfortranarray(g_max, dtype=np.intc)
+
     if beta_init is None:
         beta_init = np.zeros(n_features, order='F')
     else:
@@ -171,12 +192,42 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
 
     for t in range(n_lambdas):
 
-        model = bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
-                         n_samples, n_features, n_groups, size_groups, g_start,
-                         norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t], lambda2,
-                         lambda_max, max_iter, f, eps, screen,
-                         nDST3, norm2_nDST3, tau_w_star,
-                         disabled_features, disabled_groups, wstr_plus=0)
+        if t == 0:
+            lambda_prec = lambda_max
+        else:
+            lambda_prec = lambdas[t - 1]
+
+        if screen == STRONG_GAP_SAFE:
+
+            # TODO: cythonize the strong gap safe
+            bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
+                     n_samples, n_features, n_groups, size_groups, g_start,
+                     g_max, len_g_max,
+                     norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t],
+                     lambda_prec, lambda2, lambda_max, max_iter, f, tol,
+                     screen, nDST3, norm2_nDST3, tau_w_star,
+                     disabled_features, disabled_groups, wstr_plus=0)
+
+            screen = GAPSAFE  # deactivate the strong rule
+
+            model = bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
+                             n_samples, n_features, n_groups, size_groups, g_start,
+                             g_max, len_g_max,
+                             norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t],
+                             lambda_prec, lambda2, lambda_max, max_iter, f, tol,
+                             screen, nDST3, norm2_nDST3, tau_w_star,
+                             disabled_features, disabled_groups, wstr_plus=0)
+
+            screen = STRONG_GAP_SAFE  # reactivate the strong rule
+
+        else:
+            model = bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
+                             n_samples, n_features, n_groups, size_groups, g_start,
+                             g_max, len_g_max,
+                             norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t],
+                             lambda_prec, lambda2, lambda_max, max_iter, f, tol,
+                             screen, nDST3, norm2_nDST3, tau_w_star,
+                             disabled_features, disabled_groups, wstr_plus=0)
 
         dual_scale, dual_gaps[t], n_active_groups, n_active_features, \
             n_iters[t] = model
@@ -196,12 +247,13 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
 
             bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
                      n_samples, n_features, n_groups, size_groups, g_start,
-                     norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t + 1], lambda2,
-                     lambda_max, max_iter, f, eps, screen,
-                     nDST3, norm2_nDST3, tau_w_star,
+                     g_max, len_g_max,
+                     norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t + 1],
+                     lambda_prec, lambda2, lambda_max, max_iter, f, tol,
+                     screen, nDST3, norm2_nDST3, tau_w_star,
                      disabled_features, disabled_groups, wstr_plus=1)
 
-        if abs(dual_gaps[t]) > eps * nrm2_y:
+        if abs(dual_gaps[t]) > tol:
             print("Warning did not converge ... t = %s gap = %s eps = %s n_iter = %s" %
                   (t, dual_gaps[t], eps, n_iters[t]))
 

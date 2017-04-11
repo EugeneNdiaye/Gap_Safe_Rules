@@ -10,6 +10,8 @@ cdef double np_inf = np.inf
 cdef int NO_SCREENING = 0
 cdef int GAPSAFE_SEQ = 1
 cdef int GAPSAFE = 2
+cdef int STRONG_RULE = 10
+cdef int STRONG_GAP_SAFE = 666
 
 
 cdef inline double fmax(double x, double y) nogil:
@@ -199,12 +201,12 @@ cdef void screen_variables(int n_samples, int n_features,
         # if screening == GAPSAFE:
         r_normX_j = r_screen * sqrt(norm_X2[j])
 
-        if r_normX_j >= 1:
+        if r_normX_j >= 1.:
             # screening test obviously will fail
             continue
 
-        if fabs(XTR[j] / dual_scale) + r_normX_j < 1:
-            # Update residual removed
+        if fabs(XTR[j] / dual_scale) + r_normX_j < 1.:
+            # TODO: Update residual (removed ?)
             if beta[j] != 0:
 
                 for i in range(n_samples):
@@ -214,10 +216,11 @@ cdef void screen_variables(int n_samples, int n_features,
                     else:
                         exp_Xbeta[i] = exp(Xbeta[i])
                     residual[i] = y[i] - exp_Xbeta[i] / (1. + exp_Xbeta[i])
-                # we "set" x_j to zero since the j_th feature
-                # is inactive
-                XTR[j] = 0.
+
                 beta[j] = 0.
+            # we "set" x_j to zero since the j_th feature is inactive
+            XTR[j] = 0.
+
             disabled_features[j] = 1
             n_active_features[0] -= 1
 
@@ -228,15 +231,14 @@ cdef void screen_variables(int n_samples, int n_features,
 def cd_logreg(double[::1, :] X, double[:] y, double[:] beta,
               double[:] XTR, double[:] Xbeta, double[:] exp_Xbeta,
               double[:] residual, int[:] disabled_features, double nrm2_y,
-              double[:] norm_X2,
-              double lambda_, double eps, double dual_scale,
-              int max_iter, int f, int screening, int wstr_plus=0):
+              double[:] norm_X2, double lambda_, double lambda_prec,
+              double tol, double dual_scale, int max_iter, int f,
+              int screening, int wstr_plus=0):
     """
         Solve ? + lambda_ ||beta||_1
     """
 
     cdef int i = 0
-    cdef int k = 0
     cdef int j = 0
     cdef int n_iters = 0
     cdef int inc = 1
@@ -247,7 +249,7 @@ def cd_logreg(double[::1, :] X, double[:] y, double[:] beta,
 
     cdef double gap_t = 1.
     cdef double r_screen = np_inf
-    cdef double double_tmp = 0
+    cdef double double_tmp = 0  # the most important generic double variable
     cdef double mu = 0
     cdef double beta_old_j = 0
     cdef double p_obj = 0.
@@ -262,126 +264,154 @@ def cd_logreg(double[::1, :] X, double[:] y, double[:] beta,
     cdef double[:] Xbeta_next = np.zeros(n_samples, order='F')
     cdef double[:] exp_Xbeta_next = np.ones(n_samples, order='F')
 
+    # for those who violate the rules !
+    cdef int violation = n_features
+
     with nogil:
+
         if wstr_plus == 0:
             for j in range(n_features):
                 disabled_features[j] = 0
 
         for j in range(n_features):
+
             if disabled_features[j] == 1:
                 continue
+
             norm1_beta += fabs(beta[j])
 
-        # Sequential GAPSAFE rule (with preceding optimal points)
-        if screening == GAPSAFE_SEQ:
+        if screening == STRONG_RULE:
 
-            p_obj = primal_log(& Xbeta[0], & exp_Xbeta[0], & y[0],
-                               & beta[0], lambda_, & disabled_features[0],
-                               norm1_beta, n_samples, n_features)
+            for j in range(n_features):
 
-            d_obj = dual_log(& y[0], & residual[0], dual_scale, lambda_,
-                            n_samples)
+                if fabs(XTR[j]) < 2 * lambda_ - lambda_prec:
+                    disabled_features[j] = 1
+                    n_active_features -= 1
+                    beta[j] = 0.
 
-            r_screen = sqrt(2 * (p_obj - d_obj)) / (2 * lambda_)
+        while violation > 0:
 
-            screen_variables(n_samples, n_features,
-                             & n_active_features, & beta[0],
-                             & Xbeta[0], & exp_Xbeta[0], X, & y[0],
-                             & residual[0], & XTR[0],
-                             & disabled_features[0], & norm_X2[0],
-                             dual_scale, r_screen)
+            for n_iters in range(max_iter):
 
-        for n_iters in range(max_iter):
+                if f != 0 and n_iters % f == 0:
 
-            if f != 0 and n_iters % f == 0:
+                    double_tmp = 0.
+                    for j in range(n_features):
 
-                double_tmp = 0.
+                        if disabled_features[j] == 1:
+                            continue
+
+                        XTR[j] = ddot(& n_samples, & X[0, j], & inc,
+                                      & residual[0], & inc)
+
+                        # Compute dual point by dual scaling :
+                        # theta_k = residual / dual_scale
+                        double_tmp = fmax(double_tmp, fabs(XTR[j]))
+
+                    dual_scale = fmax(lambda_, double_tmp)
+
+                    p_obj = primal_log(& Xbeta[0], & exp_Xbeta[0], & y[0],
+                                       & beta[0], lambda_, & disabled_features[0],
+                                       norm1_beta, n_samples, n_features)
+
+                    d_obj = dual_log(& y[0], & residual[0], dual_scale, lambda_,
+                                     n_samples)
+                    gap_t = p_obj - d_obj
+
+                    if gap_t <= tol:
+                        break
+
+                    # Dynamic Gap Safe rule
+                    if screening in [GAPSAFE, GAPSAFE_SEQ]:
+
+                        if screening == GAPSAFE_SEQ and n_iters >= 1:
+                            pass
+
+                        else:
+                            r_screen = sqrt(2 * gap_t) / (2 * lambda_)
+
+                            screen_variables(n_samples, n_features,
+                                             & n_active_features, & beta[0],
+                                             & Xbeta[0], & exp_Xbeta[0], X, & y[0],
+                                             & residual[0], & XTR[0],
+                                             & disabled_features[0], & norm_X2[0],
+                                             dual_scale, r_screen)
+
+                # Coordinate descent with line search
                 for j in range(n_features):
 
                     if disabled_features[j] == 1:
                         continue
 
+                    Hessian[j] = 0
+                    for i in range(n_samples):
+                        Hessian[j] += X[i, j] ** 2 * exp_Xbeta[i] / (1. + exp_Xbeta[i]) ** 2
+
+                    L_j = fmax(Hessian[j], 1e-12)
+                    mu = lambda_ / L_j
+
+                    beta_old_j = beta[j]
                     XTR[j] = ddot(& n_samples, & X[0, j], & inc,
                                   & residual[0], & inc)
 
-                    # Compute dual point by dual scaling :
-                    # theta_k = residual / dual_scale
-                    double_tmp = fmax(double_tmp, fabs(XTR[j]))
+                    beta_prox_j = ST(mu, beta[j] + XTR[j] / L_j)
 
-                dual_scale = fmax(lambda_, double_tmp)
+                    # line search
+                    delta_j = beta_prox_j - beta[j]
 
-                p_obj = primal_log(& Xbeta[0], & exp_Xbeta[0], & y[0],
-                                     & beta[0], lambda_, & disabled_features[0],
-                                     norm1_beta, n_samples, n_features)
+                    p_obj = primal_log(& Xbeta[0], & exp_Xbeta[0], & y[0],
+                                       & beta[0], lambda_, & disabled_features[0],
+                                       norm1_beta, n_samples, n_features)
 
-                d_obj = dual_log(& y[0], & residual[0], dual_scale, lambda_,
-                                 n_samples)
-                gap_t = p_obj - d_obj
+                    alpha_j = step_size(beta, beta_next, y, X, Xbeta, Xbeta_next,
+                                        exp_Xbeta_next, beta_prox_j, delta_j, p_obj,
+                                        norm1_beta, XTR[j], lambda_, & disabled_features[0],
+                                        n_samples, n_features, j)
 
-                if gap_t <= eps:
-                    break
+                    # Update beta[j]
+                    beta[j] = beta[j] + alpha_j * delta_j
 
-                # Dynamic Gap Safe rule
-                if screening == GAPSAFE:
+                    if beta[j] != beta_old_j:
 
-                    r_screen = sqrt(2 * gap_t) / (2 * lambda_)
+                        norm1_beta += fabs(beta[j]) - fabs(beta_old_j)
 
-                    screen_variables(n_samples, n_features,
-                                     & n_active_features, & beta[0],
-                                     & Xbeta[0], & exp_Xbeta[0], X, & y[0],
-                                     & residual[0], & XTR[0],
-                                     & disabled_features[0], & norm_X2[0],
-                                     dual_scale, r_screen)
+                        double_tmp = beta[j] - beta_old_j
+                        # Xbeta += X[:, j].T(beta[j] - beta_old_j)
+                        daxpy(& n_samples, & double_tmp, & X[0, j],
+                              & inc, & Xbeta[0], & inc)
 
-            # Coordinate descent with line search
-            for j in range(n_features):
+                        for i in range(n_samples):
+                            if Xbeta[i] > 18:
+                                exp_Xbeta[i] = Xbeta[i]
+                            else:
+                                exp_Xbeta[i] = exp(Xbeta[i])
+                            residual[i] = y[i] - exp_Xbeta[i] / (1. + exp_Xbeta[i])
 
-                if disabled_features[j] == 1:
-                    continue
+            if screening == STRONG_RULE:
+                # check violation of KKT condition
+                violation = 0
+                for j in range(n_features):
 
-                Hessian[j] = 0
-                for i in range(n_samples):
-                    Hessian[j] += X[i, j] ** 2 * exp_Xbeta[i] / (1. + exp_Xbeta[i]) ** 2
+                    if disabled_features[j] == 0:
+                        continue
 
-                L_j = fmax(Hessian[j], 1e-12)
-                mu = lambda_ / L_j
+                    elif beta[j] != 0:
 
-                beta_old_j = beta[j]
-                XTR[j] = ddot(& n_samples, & X[0, j], & inc,
-                              & residual[0], & inc)
+                        if fabs(XTR[j] - lambda_ * fsign(beta[j])) > 1e-12:
+                            disabled_features[j] = 0
+                            violation += 1
 
-                beta_prox_j = ST(mu, beta[j] + XTR[j] / L_j)
+                    else:
 
-                # line search
-                delta_j = beta_prox_j - beta[j]
+                        if fabs(fabs(XTR[j]) - lambda_) <= 1e-12 or\
+                           fabs(XTR[j]) <= lambda_:
+                            pass
 
-                p_obj = primal_log(& Xbeta[0], & exp_Xbeta[0], & y[0],
-                                   & beta[0], lambda_, & disabled_features[0],
-                                   norm1_beta, n_samples, n_features)
-
-                alpha_j = step_size(beta, beta_next, y, X, Xbeta, Xbeta_next,
-                                    exp_Xbeta_next, beta_prox_j, delta_j, p_obj,
-                                    norm1_beta,
-                                    XTR[j], lambda_, & disabled_features[0],
-                                    n_samples, n_features, j)
-
-                # Update beta[j]
-                beta[j] = beta[j] + alpha_j * delta_j
-
-                if beta[j] != beta_old_j:
-
-                    norm1_beta += fabs(beta[j]) - fabs(beta_old_j)
-
-                    double_tmp = beta[j] - beta_old_j
-                    # Xbeta += X[:, j].T(beta[j] - beta_old_j)
-                    daxpy(& n_samples, & double_tmp, & X[0, j],
-                          & inc, & Xbeta[0], & inc)
-
-                    for i in range(n_samples):
-                        if Xbeta[i] > 18:
-                            exp_Xbeta[i] = Xbeta[i]
                         else:
-                            exp_Xbeta[i] = exp(Xbeta[i])
-                        residual[i] = y[i] - exp_Xbeta[i] / (1. + exp_Xbeta[i])
+                            disabled_features[j] = 0
+                            violation += 1
 
-    return gap_t, dual_scale, k, n_active_features
+            else:
+                violation = 0
+
+    return gap_t, dual_scale, n_iters, n_active_features

@@ -131,37 +131,6 @@ def precompute_norm(X, y, size_groups, g_start):
     return norm_X, np.array(norm_X_g), nrm2_y
 
 
-def precompute_DGST3(X, y, tau, omega, lambda_max, imax, size_groups, g_start):
-    """
-        Precomputation needed for DST3 screening rule.
-
-    """
-    g_max = range(g_start[imax], g_start[imax] + size_groups[imax])
-    tgmax = (1. - tau) * omega[imax] / (tau + (1. - tau) * omega[imax])
-    XgmaxTy_on_lambda_max = np.dot(X[:, g_max].T, y) / lambda_max
-    treshold_n = (1. - tgmax) * \
-        epsilon_norm(XgmaxTy_on_lambda_max, 1. - tgmax, tgmax)
-
-    if tau == 1:
-
-        Xty = np.dot(X.T, y)
-        nDST3 = X[:, np.argmax(Xty)]
-        norm2_nDST3 = 1.
-        nDST3Ty = lambda_max
-
-    else:
-
-        STx = vect_ST(treshold_n, XgmaxTy_on_lambda_max)
-
-        scale_n = tgmax * np.linalg.norm(STx, ord=2) + \
-            (1. - tgmax) * np.linalg.norm(STx, ord=1)
-
-        nDST3 = np.dot(X[:, g_max], STx) / scale_n
-        norm2_nDST3 = np.linalg.norm(nDST3) ** 2
-        nDST3Ty = np.dot(nDST3.T, y)
-
-    return nDST3, norm2_nDST3, nDST3Ty
-
 
 def build_lambdas(X, y, omega, size_groups, g_start, n_lambdas=100, delta=3,
                   tau=0.5):

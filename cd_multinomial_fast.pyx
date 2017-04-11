@@ -1,10 +1,4 @@
-# Author: Eugene Ndiaye
-#         Olivier Fercoq
-#         Alexandre Gramfort
-#         Joseph Salmon
-# GAP Safe Screening Rules for Sparse-Group Lasso.
-# http://arxiv.org/abs/1602.06225
-# firstname.lastname@telecom-paristech.fr
+# TODO: clean more and add strong gap safe
 
 
 from libc.math cimport fabs, sqrt, log, log1p, exp

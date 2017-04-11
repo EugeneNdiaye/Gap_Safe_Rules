@@ -13,6 +13,11 @@ GAPSAFE = 4
 GAPSAFE_SEQ_pp = 5
 GAPSAFE_pp = 6
 
+STRONG_RULE = 10
+EDPP = 11
+
+STRONG_GAP_SAFE = 666
+
 
 def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=1,
                warm_start_plus=False, j_star=0):
@@ -112,6 +117,8 @@ def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=1,
     nrm2_y = norm(y) ** 2
     XTR = np.asfortranarray(np.dot(X.T, residual))
 
+    tol = eps * nrm2_y  # duality gap tolerance
+
     # True only if beta lambdas[0] ==  lambda_max
     lambda_max = dual_scale = lambdas[0]
 
@@ -125,12 +132,36 @@ def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=1,
     else:
         XTy = None
 
+    if screening == EDPP:
+        v1 = X[:, j_star] * np.sign(np.dot(X[:, j_star], y))
+    else:
+        v1 = None
+
     for t in range(n_lambdas):
 
+        if t == 0:
+            lambda_prec = lambda_max
+        else:
+            lambda_prec = lambdas[t - 1]
+
+        if screening == STRONG_GAP_SAFE:
+
+            # TODO: cythonize this part
+            disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
+            mask = np.where(np.abs(XTR) < 2 * lambdas[t] - lambda_prec)[0]
+            beta_init[mask] = 0.
+            disabled_features[mask] = 1
+
+            cd_lasso(X, y, beta_init, XTR, XTy, residual, v1,
+                     disabled_features, nrm2_y, norm_X2, lambdas[t],
+                     lambda_prec, lambda_max, dual_scale, tol, max_iter,
+                     f, screening, j_star, wstr_plus=1)
+
         gaps[t], dual_scale, n_iters[t], n_active_features[t] = \
-            cd_lasso(X, y, beta_init, XTR, XTy, residual, disabled_features,
-                     nrm2_y, norm_X2, lambdas[t], lambda_max, dual_scale,
-                     eps, max_iter, f, screening, j_star, wstr_plus=0)
+            cd_lasso(X, y, beta_init, XTR, XTy, residual, v1,
+                     disabled_features, nrm2_y, norm_X2, lambdas[t],
+                     lambda_prec, lambda_max, dual_scale, tol, max_iter,
+                     f, screening, j_star, wstr_plus=0)
 
         betas[t, :] = beta_init.copy()
         if t == 0 and screening != NO_SCREENING:
@@ -139,14 +170,14 @@ def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=1,
         if warm_start_plus and t < n_lambdas - 1 and t != 0 and \
            n_active_features[t] < n_features:
 
-            cd_lasso(X, y, beta_init, XTR, XTy, residual, disabled_features,
-                     nrm2_y, norm_X2, lambdas[t + 1], lambda_max, dual_scale,
-                     eps, max_iter, f, screening=screening, j_star=j_star,
-                     wstr_plus=1)
+                cd_lasso(X, y, beta_init, XTR, XTy, residual, v1,
+                         disabled_features, nrm2_y, norm_X2, lambdas[t + 1],
+                         lambda_prec, lambda_max, dual_scale, tol, max_iter,
+                         f, screening=screening, j_star=j_star, wstr_plus=1)
 
-        if gaps[t] > eps * nrm2_y:
+        if abs(gaps[t]) > tol:
 
-            print "warning: did not converge, t = ", t,
+            print "warning: did not converge, t = ", t
             print "gap = ", gaps[t], "eps = ", eps
 
     return betas, gaps, n_iters, n_active_features

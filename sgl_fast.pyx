@@ -6,7 +6,6 @@
 # http://arxiv.org/abs/1602.06225
 # firstname.lastname@telecom-paristech.fr
 
-
 from libc.math cimport fabs, sqrt
 from libc.stdlib cimport qsort
 from scipy.linalg.cython_blas cimport daxpy, ddot, dnrm2, dscal
@@ -25,6 +24,10 @@ cdef int GAPSAFE = 5
 
 cdef int GAPSAFE_SEQ_pp = 6
 cdef int GAPSAFE_pp = 7
+
+cdef int STRONG_RULE = 8
+cdef int TLFre = 9
+cdef int SAFE_STRONG_RULE = 666
 
 
 cdef inline double fmax(double x, double y) nogil:
@@ -63,6 +66,13 @@ cdef double max(int n, double * a) nogil:
         if d > m:
             m = d
     return m
+
+
+# mimic rounding to zero
+# cdef double near_zero(double a) nogil:
+#     if fabs(a) <= 1e-14:
+#         return 0
+#     return a
 
 cdef double near_zero(double a) nogil:
     if fabs(a) <= 1e-14:
@@ -347,7 +357,7 @@ cdef void fscreen_sgl(double * beta, double * XTc, double[::1, :] X,
                               residual, & inc)
                         beta[j] = 0.
 
-                    # we "set" x_j to zero since the j_th feature is inactive
+                    # # we "set" x_j to zero since the j_th feature is inactive
                     XTR[j] = 0.
                     disabled_features[j] = 1
                     n_active_features[0] -= 1
@@ -475,10 +485,10 @@ cdef double dual_scaling(int n_samples, int n_features, int n_groups,
 def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
              double[:] XTR, double[:] residual, double dual_scale,
              double[:] omega, int n_samples, int n_features, int n_groups,
-             int[:] size_groups, int[:] g_start,
+             int[:] size_groups, int[:] g_start, int[:] g_max, int len_g_max,
              double[:] norm2_X, double[:] norm2_X_g, double nrm2_y,
-             double tau, double lambda_, double lambda2,
-             double lambda_max, int max_iter, int f, double eps,
+             double tau, double lambda_, double lambda_prec, double lambda2,
+             double lambda_max, int max_iter, int f, double tol,
              int screen, double[:] n_DST3, double norm2_nDST3,
              double tau_w_star, int[:] disabled_features,
              int[:] disabled_groups, int wstr_plus):
@@ -492,16 +502,18 @@ def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
     """
 
     cdef int i = 0
-    cdef int k = 0
     cdef int j = 0
     cdef int g_end = 0
     cdef int n_active_groups = n_groups
     cdef int n_active_features = n_features
     cdef int inc = 1
+    cdef int n_iter = 0
 
     cdef double r = 666.  # radius in the screening rules
     cdef double gap_t = 666.
     cdef double double_tmp = 0.
+    cdef double tg = 0.
+    cdef double norm_ST_g = 0.
 
     # zx is a temporary array used in dual_scaling (without gil)
     cdef double[:] zx = np.zeros(n_features, order='F')
@@ -516,6 +528,15 @@ def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
     cdef double[:] XTc = np.zeros(n_features, order='F')
     cdef double[:] center = np.zeros(n_samples, order='F')
 
+    # For TLFre
+    cdef double[:] n = np.zeros(n_samples, order='F')
+    cdef double[:] v = np.zeros(n_samples, order='F')
+    cdef double[:] v_orth = np.zeros(n_samples, order='F')
+    cdef double norm_n2 = 0.
+    cdef double vn = 0.
+
+    cdef int violation = n_features
+
     with nogil:
 
         if wstr_plus == 0:
@@ -525,6 +546,9 @@ def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
             for i in range(n_groups):
                 disabled_groups[i] = 0
 
+        # if screen == SAFE_STRONG_RULE:
+        #     screen = GAPSAFE
+
         if screen == DST3:
 
             for i in range(n_samples):
@@ -533,8 +557,7 @@ def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
             # r is computed dynamically
             # XTc = np.dot(X.T, center)
             for j in range(n_features):
-                XTc[j] = ddot(
-                    & n_samples, & X[0, j], & inc, & center[0], & inc)
+                XTc[j] = ddot(& n_samples, & X[0, j], & inc, & center[0], & inc)
 
         if screen == DYNAMIC_SAFE:
             # center = y / lambda_
@@ -543,8 +566,7 @@ def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
             # r is computed dynamically
             # XTc = np.dot(X.T, center)
             for j in range(n_features):
-                XTc[j] = ddot(
-                    & n_samples, & X[0, j], & inc, & center[0], & inc)
+                XTc[j] = ddot(& n_samples, & X[0, j], & inc, & center[0], & inc)
 
         if screen == STATIC_SAFE:
 
@@ -555,24 +577,46 @@ def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
 
             # XTc = np.dot(X.T, center)
             for j in range(n_features):
-                XTc[j] = ddot(
-                    & n_samples, & X[0, j], & inc, & center[0], & inc)
+                XTc[j] = ddot(& n_samples, & X[0, j], & inc, & center[0], & inc)
 
-        if screen == GAPSAFE_SEQ:
-            # center = theta (previous optimal dual solution)
-            gap_t = dual_gap(n_samples, n_features, n_groups,
-                             & size_groups[0], & g_start[0],
-                             & residual[0], & y[0], & beta[0], nrm2_y,
-                             & omega[0], dual_scale, & disabled_groups[0],
-                             & disabled_features[0], residual_norm2,
-                             norm_beta2, lambda_, lambda2, tau)
+            if screen == TLFre:
 
-            # r = sqrt(2 * gap_t) / lambda_
-            r = sqrt(2 * near_zero(gap_t)) / lambda_
-            for j in range(n_features):
-                XTc[j] = (XTR[j] - lambda2 * beta[j]) / dual_scale
+                # theta_TLFre = residual / dual_scale = preceeding dual solution
+                if lambda_prec == lambda_max:
+                    for i in range(n_samples):
+                        for j in range(len_g_max):
+                           n[i] += X[i, g_max[j]] * ST(tau, X[i, g_max[j]] * y[i] / lambda_max)
+                else:
+                    for i in range(n_samples):
+                        n[i] = y[i] / lambda_prec - residual[i] / dual_scale
 
-        if screen in [GAPSAFE_SEQ, STATIC_SAFE]:
+                for i in range(n_samples):
+                    v[i] = y[i] / lambda_ - residual[i] / dual_scale
+
+                # norm_n2 = linalg.norm(n, ord=2) ** 2
+                norm_n2 = dnrm2(& n_samples, & n[0], & inc) ** 2
+
+                if norm_n2 != 0:
+                    # vn = np.dot(v, n)
+                    vn = ddot(& n_samples, & v[0], & inc, & n[0], & inc)
+                    # v_orth = v - (vn / norm_n2) * n
+                    for i in range(n_samples):
+                        v_orth[i] = v[i] - (vn / norm_n2) * n[i]
+                else:
+                    for i in range(n_samples):
+                        v_orth[i] = v[i]
+
+                # center = theta_TLFre + 0.5 * v_orth
+                for i in range(n_samples):
+                    center[i] = residual[i] / dual_scale + 0.5 * v_orth[i]
+                # r = 0.5 * linalg.norm(v_orth, ord=2)
+                r = 0.5 * dnrm2(& n_samples, & v_orth[0], & inc)
+                # XTc = np.dot(X.T, center)
+                for j in range(n_features):
+                    XTc[j] = ddot(& n_samples, & X[0, j], & inc,
+                                  & center[0], & inc)
+
+        if screen in [STATIC_SAFE, TLFre]:
 
             fscreen_sgl(
                 & beta[0], & XTc[0], X, & residual[0], & XTR[0],
@@ -581,77 +625,173 @@ def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
                 & g_start[0], n_groups, r, n_samples,
                 & n_active_features, & n_active_groups, tau, & omega[0])
 
-        for k in range(max_iter):
+        if screen in [STRONG_RULE, SAFE_STRONG_RULE]:
 
-            if f != 0 and k % f == 0:
+            for i in range(n_groups):
 
-                # Compute dual point by dual scaling :
-                # theta_k = residual / dual_scale
-                dual_scale = dual_scaling(n_samples, n_features, n_groups,
-                                          & beta[0], X, & residual[0],
-                                          & XTR[0], & disabled_features[0],
-                                          & disabled_groups[0],
-                                          & size_groups[0], & g_start[0],
-                                          lambda_, lambda2, tau, & omega[0], zx)
+                g_end = g_start[i] + size_groups[i]
 
-                residual_norm2 = dnrm2(& n_samples, & residual[0], & inc) ** 2
-                norm_beta2 = dnrm2(& n_features, & beta[0], & inc) ** 2
-                gap_t = dual_gap(n_samples, n_features, n_groups,
-                                 & size_groups[0], & g_start[0],
-                                 & residual[0], & y[0], & beta[0],
-                                 nrm2_y, & omega[0], dual_scale,
-                                 & disabled_groups[0],
-                                 & disabled_features[0],
-                                 residual_norm2, norm_beta2,
-                                 lambda_, lambda2, tau)
+                # double_tmp = sgl-dual norm of (XTR_g)
+                tg = ((1. - tau) * omega[i]) / (tau + (1. - tau) * omega[i])
+                double_tmp = epsilon_norm(size_groups[i], & XTR[g_start[i]],
+                                          1. - tg, tg, zx)
+                double_tmp /= (tau + (1. - tau) * omega[i])
 
-                if gap_t <= eps * nrm2_y:
-                    break
+                if double_tmp < 2 * lambda_ - lambda_prec:
+                        disabled_groups[i] = 1
+                        n_active_groups -= 1
+                        n_active_features -= size_groups[i]
+                        for j in range(g_start[i], g_end):
+                            beta[j] = 0.
 
-                if screen == GAPSAFE:
-                    # center = theta_k
-                    # r = sqrt(2 * gap_t) / lambda_
-                    r = sqrt(2 * near_zero(gap_t)) / lambda_
-                    for j in range(n_features):
-                        XTc[j] = (XTR[j] - lambda2 * beta[j]) / dual_scale
+                else:
+                    for j in range(g_start[i], g_end):
+                        if fabs(XTR[j]) < tau * (2 * lambda_ - lambda_prec):
+                            disabled_features[j] = 1
+                            n_active_features -= 1
+                            beta[j] = 0.
 
-                if screen == DYNAMIC_SAFE:
-                    # center = y /lambda_
-                    # r = ||theta_k - center||
-                    if lambda_ == lambda_max:
-                        r = 0.
+        while violation > 0:
+            for n_iter in range(max_iter):
+
+                if f != 0 and n_iter % f == 0:
+
+                    # Compute dual point by dual scaling :
+                    # theta_k = residual / dual_scale
+                    dual_scale = dual_scaling(n_samples, n_features, n_groups,
+                                              & beta[0], X, & residual[0],
+                                              & XTR[0], & disabled_features[0],
+                                              & disabled_groups[0],
+                                              & size_groups[0], & g_start[0],
+                                              lambda_, lambda2, tau, & omega[0], zx)
+
+                    residual_norm2 = dnrm2(& n_samples, & residual[0], & inc) ** 2
+                    norm_beta2 = dnrm2(& n_features, & beta[0], & inc) ** 2
+                    gap_t = dual_gap(n_samples, n_features, n_groups,
+                                     & size_groups[0], & g_start[0],
+                                     & residual[0], & y[0], & beta[0],
+                                     nrm2_y, & omega[0], dual_scale,
+                                     & disabled_groups[0],
+                                     & disabled_features[0],
+                                     residual_norm2, norm_beta2,
+                                     lambda_, lambda2, tau)
+
+                    if gap_t <= tol:
+                        # print "boom bapp ---> ", near_zero(gap_t), gap_t
+                        break
+
+                    if screen == DYNAMIC_SAFE:
+                        # center = y /lambda_
+                        # r = ||theta_k - center||
+                        if lambda_ == lambda_max:
+                            r = 0.
+                        else:
+                            r = 0.
+                            for i in range(n_samples):
+                                r += (residual[i] / dual_scale - center[i]) ** 2
+                            r = sqrt(r)
+
+                    if screen == DST3:
+                        # center is precomputed
+                        # r = sqrt(||theta_k - y/lambda||**2 -
+                        #          ||y/lambda_ - center||**2)
+                        if lambda_ == lambda_max:
+                            r = 0.
+                        else:
+                            r = 0.
+                            for i in range(n_samples):
+                                r += (residual[i] / dual_scale - y[i] / lambda_) ** 2
+                            r = sqrt(r - delta_DST3 * tmp_DST3)
+
+
+
+                    if screen in [GAPSAFE, GAPSAFE_SEQ, SAFE_STRONG_RULE]:
+
+                        if screen == GAPSAFE_SEQ and n_iter >= 1:
+                            pass
+                        else:
+                            # center = theta_k
+                            # r = sqrt(gap_t) / lambda_
+                            r = sqrt(near_zero(gap_t)) / lambda_
+                            for j in range(n_features):
+                                XTc[j] = (XTR[j] - lambda2 * beta[j]) / dual_scale
+
+                    if screen in [GAPSAFE, DYNAMIC_SAFE, DST3,
+                                  GAPSAFE_SEQ, SAFE_STRONG_RULE]:
+
+                        if screen == GAPSAFE_SEQ and n_iter >= 1:
+                            pass
+
+                        else:
+                            fscreen_sgl(
+                                & beta[0], & XTc[0], X, & residual[0], & XTR[0],
+                                & disabled_features[0], & disabled_groups[0],
+                                & size_groups[0], & norm2_X[0], & norm2_X_g[0],
+                                & g_start[0], n_groups, r, n_samples,
+                                & n_active_features, & n_active_groups, tau,
+                                & omega[0])
+
+                prox_sgl(n_samples, n_features, n_groups,
+                         & beta[0], & beta_old[0], X, & residual[0], & XTR[0],
+                         & disabled_features[0], & disabled_groups[0],
+                         & size_groups[0], & norm2_X_g[0],
+                         & g_start[0], lambda_, lambda2, tau, & omega[0])
+
+            if screen in [STRONG_RULE, TLFre]:
+                # check violation of KKT condition
+                violation = 0
+
+                # TODO: n_active_features += 1 in case of violation
+
+                for i in range(n_groups):
+
+                    tg = (1. - tau) * omega[i]
+                    g_end = g_start[i] + size_groups[i]
+
+                    # compute the group norm
+                    double_tmp = dnrm2(& g_end, & beta[g_start[i]], & inc)
+
+                    if disabled_groups[i] == 0:
+                        continue
+
+                    if double_tmp != 0:
+
+                        for j in range(g_start[i], g_end):
+
+                            if disabled_features[j] == 0:
+                                continue
+
+                            if beta[j] != 0:
+
+                                if fabs(XTR[j] / lambda_ -
+                                        tg * beta[j] / double_tmp -
+                                        tau * fsign(beta[j])) > 1e-12:
+                                    disabled_features[j] = 0
+                                    violation += 1
+
+                            else:
+                                if fabs(fabs(XTR[j]) - lambda_ * tau) <= 1e-12 or\
+                                   fabs(XTR[j]) <= lambda_ * tau:
+                                    pass
+
+                                else:
+                                    disabled_features[j] = 0
+                                    violation += 1
+
                     else:
-                        r = 0.
-                        for i in range(n_samples):
-                            r += (residual[i] / dual_scale - center[i]) ** 2
-                        r = sqrt(r)
 
-                if screen == DST3:
-                    # center is precomputed
-                    # r = sqrt(||theta_k - y/lambda||**2 -
-                    #          ||y/lambda_ - center||**2)
-                    if lambda_ == lambda_max:
-                        r = 0.
-                    else:
-                        r = 0.
-                        for i in range(n_samples):
-                            r += (residual[i] / dual_scale - y[i] / lambda_) ** 2
-                        r = sqrt(r - delta_DST3 * tmp_DST3)
+                        norm_ST_g = 0.
+                        for j in range(g_start[i], g_end):
+                            norm_ST_g += ST(XTR[j] / lambda_, tau) ** 2
 
-                if screen in [GAPSAFE, DYNAMIC_SAFE, DST3]:
+                        if fabs(norm_ST_g - tg ** 2) <= 1e-12 or\
+                           norm_ST_g <= tg ** 2:
+                            pass
 
-                    fscreen_sgl(
-                        & beta[0], & XTc[0], X, & residual[0], & XTR[0],
-                        & disabled_features[0], & disabled_groups[0],
-                        & size_groups[0], & norm2_X[0], & norm2_X_g[0],
-                        & g_start[0], n_groups, r, n_samples,
-                        & n_active_features, & n_active_groups, tau,
-                        & omega[0])
+                        else:
+                            disabled_groups[i] = 0
+                            violation += 1
+            else:
+                violation = 0
 
-            prox_sgl(n_samples, n_features, n_groups,
-                     & beta[0], & beta_old[0], X, & residual[0], & XTR[0],
-                     & disabled_features[0], & disabled_groups[0],
-                     & size_groups[0], & norm2_X_g[0],
-                     & g_start[0], lambda_, lambda2, tau, & omega[0])
-
-    return (dual_scale, gap_t, n_active_groups, n_active_features, k)
+    return (dual_scale, gap_t, n_active_groups, n_active_features, n_iter)
