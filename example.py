@@ -1,10 +1,4 @@
-# Gap Safe screening rules for sparsity enforcing penalties.
 
-This package implements coordinate descent with Gap Safe screening rules https://arxiv.org/abs/1611.05780
-
-
-# Example in binary classification with sparse logistic regression
-```python
 import time
 import numpy as np
 from sklearn.datasets import make_classification
@@ -25,6 +19,7 @@ lambda_max = np.linalg.norm(np.dot(X.T, 0.5 - y), ord=np.inf)
 n_lambdas = 50
 lambda_ratio = eps ** (1. / (n_lambdas - 1))
 lambdas = lambda_max * (lambda_ratio ** np.arange(n_lambdas))
+
 
 NO_SCREENING = 0
 GAPSAFE_SEQ = 1
@@ -53,7 +48,6 @@ screenings_colors = ['b', 'c', 'k', 'm', '#00FF00', 'y', '#800000']
 tols = [2, 4, 6]
 times = np.zeros((len(screenings), len(tols)))
 
-# Bench computational time
 for itol, tol_exp in enumerate(tols):
 
     print
@@ -93,24 +87,3 @@ leg = plt.legend(frameon=True, loc='upper left')
 plt.tight_layout()
 plt.savefig("toybench_logreg.png", format="png")
 plt.show()
-```
-
-![Computational time](toybench_logreg.png)
-
-
-## Installation & Requirements
-This package has the following requirements:
-
-- [numpy](http://numpy.org)
-- [scipy](http://scipy.org)
-- [scikit-learn](http://scikit-learn.org)
-- [cython](http://cython.org/)
-
-We recommend to install or update anaconda (at least version 0.16.1).
-
-The compilation proceed as follows:
-
-```
-$ python setup.py build_ext --inplace
-```
-
