@@ -1,27 +1,18 @@
+from __future__ import print_function
+
 import numpy as np
+import scipy as sp
 from numpy.linalg import norm
-from cd_lasso_fast import cd_lasso
+from cd_lasso_fast import cd_lasso, matrix_column_norm
 
 NO_SCREENING = 0
-
-STATIC = 1
-DST3 = 2
-
-GAPSAFE_SEQ = 3
-GAPSAFE = 4
-
-GAPSAFE_SEQ_pp = 5
-GAPSAFE_pp = 6
-
-STRONG_RULE = 10
-EDPP = 11
-
-STRONG_GAP_SAFE = 666
+GAPSAFE_SEQ = 1
+GAPSAFE = 2
 
 
-def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=1,
-               warm_start_plus=False, j_star=0):
-
+def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=GAPSAFE,
+               gap_active_warm_start=False, strong_active_warm_start=False,
+               fit_intercept=False):
     """Compute Lasso path with coordinate descent
 
     The Lasso optimization solves:
@@ -42,30 +33,11 @@ def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=1,
 
         NO_SCREENING = 0: Standard method
 
-        STATIC_SAFE = 1: Use static safe screening rule
-            cf. El Ghaoui, L., Viallon, V., and Rabbani, T.
-            "Safe feature elimination in sparse supervised learning".
-            J. Pacific Optim., 2012.
-
-        DST3 = 2: Adaptation of the DST3 safe screening rules
-            cf.  Xiang, Z. J., Xu, H., and Ramadge, P. J.,
-            "Learning sparse representations of high dimensional data on large
-            scale dictionaries". NIPS 2011
-
-        GAPSAFE_SEQ = 3: Proposed safe screening rule using duality gap
+        GAPSAFE_SEQ = 1: Proposed safe screening rule using duality gap
                           in a sequential way: Gap Safe (Seq.)
 
-        GAPSAFE = 4: Proposed safe screening rule using duality gap in both a
+        GAPSAFE = 2: Proposed safe screening rule using duality gap in both a
                       sequential and dynamic way.: Gap Safe (Seq. + Dyn)
-
-        GAPSAFE_SEQ_pp = 5: Proposed safe screening rule using duality gap
-                             in a sequential way along with active warm start
-                             strategies: Gap Safe (Seq. + active warm start)
-
-        GAPSAFE_pp = 6: Proposed safe screening rule using duality gap
-                         in both a sequential and dynamic way along with
-                         active warm start strategies:
-                         Gap Safe (Seq. + Dyn + active warm start).
 
     beta_init : array, shape (n_features, ), optional
         The initial values of the coefficients.
@@ -107,77 +79,173 @@ def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=1,
     n_samples, n_features = X.shape
     betas = np.zeros((n_lambdas, n_features))
     beta_init = np.zeros(n_features, dtype=float, order='F')
+    intercepts = np.zeros(n_lambdas)
     disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
     gaps = np.ones(n_lambdas)
     n_iters = np.zeros(n_lambdas)
     n_active_features = np.zeros(n_lambdas)
-    norm_X2 = np.sum(X ** 2, axis=0)
 
-    residual = np.asfortranarray(y - np.dot(X, beta_init))
+    sparse = sp.sparse.issparse(X)
+    center = fit_intercept
+    active_warm_start = strong_active_warm_start or gap_active_warm_start
+    run_active_warm_start = True
+
+    if center:
+        # We center the data for the intercept
+        X_mean = np.asfortranarray(X.mean(axis=0)).ravel()
+        y_mean = y.mean()
+        y -= y_mean
+        if not sparse:
+            X -= X_mean
+    else:
+        X_mean = None
+
+    if sparse:
+        X_ = None
+        X_data = X.data
+        X_indices = X.indices
+        X_indptr = X.indptr
+        norm_Xcent = np.zeros(n_features, dtype=float, order='F')
+        matrix_column_norm(n_samples, n_features, X_data, X_indices, X_indptr,
+                           norm_Xcent, X_mean, center=center)
+        if center:
+            residual = np.asfortranarray(y - X.dot(beta_init) +
+                                         X_mean.dot(beta_init))
+            sum_residual = residual.sum()
+        else:
+            residual = np.asfortranarray(y - X.dot(beta_init))
+            sum_residual = 0
+    else:
+        X_ = np.asfortranarray(X)
+        X_data = None
+        X_indices = None
+        X_indptr = None
+        norm_Xcent = (X_ ** 2).sum(axis=0)
+        residual = np.asfortranarray(y - X.dot(beta_init))
+        sum_residual = 0
+
+    y = np.asfortranarray(y)
     nrm2_y = norm(y) ** 2
-    XTR = np.asfortranarray(np.dot(X.T, residual))
+    XTR = np.asfortranarray(X.T.dot(residual))
 
     tol = eps * nrm2_y  # duality gap tolerance
 
-    # True only if beta lambdas[0] ==  lambda_max
-    lambda_max = dual_scale = lambdas[0]
-
-    # Fortran-contiguous array are used to avoid useless copy of the data.
-    X = np.asfortranarray(X)
-    y = np.asfortranarray(y)
-    norm_X2 = np.asfortranarray(norm_X2)
-
-    if screening == STATIC:
-        XTy = np.asfortranarray(np.dot(X.T, y))
-    else:
-        XTy = None
-
-    if screening == EDPP:
-        v1 = X[:, j_star] * np.sign(np.dot(X[:, j_star], y))
-    else:
-        v1 = None
-
     for t in range(n_lambdas):
 
-        if t == 0:
-            lambda_prec = lambda_max
-        else:
-            lambda_prec = lambdas[t - 1]
+        if active_warm_start and t != 0:
 
-        if screening == STRONG_GAP_SAFE:
+            if strong_active_warm_start:
+                disabled_features = (np.abs(XTR) < 2. * lambdas[t] - lambdas[t - 1]).astype(np.intc)
 
-            # TODO: cythonize this part
-            disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
-            mask = np.where(np.abs(XTR) < 2 * lambdas[t] - lambda_prec)[0]
-            beta_init[mask] = 0.
-            disabled_features[mask] = 1
+            if gap_active_warm_start:
+                run_active_warm_start = n_active_features[t] < n_features
 
-            cd_lasso(X, y, beta_init, XTR, XTy, residual, v1,
-                     disabled_features, nrm2_y, norm_X2, lambdas[t],
-                     lambda_prec, lambda_max, dual_scale, tol, max_iter,
-                     f, screening, j_star, wstr_plus=1)
+            if run_active_warm_start:
 
-        gaps[t], dual_scale, n_iters[t], n_active_features[t] = \
-            cd_lasso(X, y, beta_init, XTR, XTy, residual, v1,
-                     disabled_features, nrm2_y, norm_X2, lambdas[t],
-                     lambda_prec, lambda_max, dual_scale, tol, max_iter,
-                     f, screening, j_star, wstr_plus=0)
+                _, sum_residual, _, _ = \
+                    cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean,
+                             beta_init, norm_Xcent, XTR, residual,
+                             disabled_features, nrm2_y, lambdas[t],
+                             sum_residual, tol, max_iter, f, screening,
+                             wstr_plus=1, sparse=sparse, center=center)
+
+        gaps[t], sum_residual, n_iters[t], n_active_features[t] = \
+            cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean, beta_init,
+                     norm_Xcent, XTR, residual, disabled_features, nrm2_y,
+                     lambdas[t], sum_residual, tol, max_iter, f, screening,
+                     wstr_plus=0, sparse=sparse, center=center)
 
         betas[t, :] = beta_init.copy()
+        if fit_intercept:
+            intercepts[t] = y_mean - X_mean.dot(beta_init)
+
         if t == 0 and screening != NO_SCREENING:
             n_active_features[0] = 0
 
-        if warm_start_plus and t < n_lambdas - 1 and t != 0 and \
-           n_active_features[t] < n_features:
-
-                cd_lasso(X, y, beta_init, XTR, XTy, residual, v1,
-                         disabled_features, nrm2_y, norm_X2, lambdas[t + 1],
-                         lambda_prec, lambda_max, dual_scale, tol, max_iter,
-                         f, screening=screening, j_star=j_star, wstr_plus=1)
-
         if abs(gaps[t]) > tol:
 
-            print "warning: did not converge, t = ", t
-            print "gap = ", gaps[t], "eps = ", eps
+            print("warning: did not converge, t = ", t)
+            print("gap = ", gaps[t], "eps = ", eps)
 
-    return betas, gaps, n_iters, n_active_features
+    return intercepts, betas, gaps, n_iters, n_active_features
+
+
+if __name__ == '__main__':
+
+    import time
+    from sklearn.datasets.mldata import fetch_mldata
+    # from scipy.sparse import csc_matrix
+    # import cProfile
+
+    # def main():
+
+    # n_samples = 100
+    # n_features = 500
+
+    # X = np.random.randn(n_samples, n_features)
+    # X[np.random.uniform(size=(n_samples, n_features)) < 0.9] = 0
+    # y = np.random.uniform(size=n_samples)
+
+    dataset = "leukemia"
+    data = fetch_mldata(dataset)
+    X = data.data
+    y = data.target
+    X = X.astype(float)
+    y = y.astype(float)
+
+    # dataset = "finance"
+    # X = sp.sparse.load_npz('finance_filtered.npz')
+    # y = np.load("finance_target.npy")
+
+    n_samples, n_features = X.shape
+    # X = csc_matrix(X)
+
+    # parameters
+    alpha_max = np.linalg.norm(X.T.dot(y), ord=np.inf)
+    n_alphas = 100
+    eps = 1e-3
+    alpha_ratio = eps ** (1. / (n_alphas - 1))
+    alphas = np.array([alpha_max * (alpha_ratio ** i)
+                       for i in range(0, n_alphas)])
+    max_iter = 10000
+    tol = 1e-8
+    print("tolerance = ", tol * np.linalg.norm(y) ** 2)
+
+    # tic = time.time()
+    # intercept, beta, gap, n_iters, _ =\
+    #     lasso_path(X, y.copy(), alphas, eps=tol,
+    #                max_iter=max_iter, screening=NO_SCREENING,)
+    # print "no Screening time = ", time.time() - tic
+
+    # tic = time.time()
+    # intercept, beta, gap, n_iters, _ =\
+    #     lasso_path(X, y.copy(), alphas, eps=tol,
+    #                max_iter=max_iter, screening=GAPSAFE)
+    # print "gap safe time = ", time.time() - tic
+
+    # tic = time.time()
+    # intercept, beta, gap, n_iters, _ =\
+    #     lasso_path(X, y.copy(), alphas, eps=tol, max_iter=max_iter,
+    #                screening=GAPSAFE,
+    #                gap_active_warm_start=True)
+    # print "gap active wstr time = ", time.time() - tic
+
+    tic = time.time()
+    intercept, beta, gap, n_iters, _ =\
+        lasso_path(X, y.copy(), alphas, eps=tol, max_iter=max_iter,
+                   screening=NO_SCREENING,
+                   strong_active_warm_start=False, fit_intercept=False)
+    print("our time = ", time.time() - tic, np.max(gap),
+          "max_gap = ", np.max(gap))
+
+    from sklearn.linear_model import lasso_path as sk_lasso_path
+    tic = time.time()
+    _, coef, d_gap = sk_lasso_path(X, y, alphas=alphas / n_samples, tol=tol,
+                                   max_iter=max_iter, fit_intercept=False)
+    print("time scikit = ", time.time() - tic,
+          "max_gap = ", np.max(d_gap))
+
+    print("norm diff = ", np.linalg.norm(beta.T - d_gap, ord=np.inf))
+
+    # cProfile.run('main()', sort='time')
+
