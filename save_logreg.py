@@ -8,6 +8,7 @@
 
 import numpy as np
 from numpy.linalg import norm
+import scipy as sp
 from save_cd_logreg_fast import cd_logreg
 
 NO_SCREENING = 0
@@ -105,34 +106,44 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, beta_init=None,
     gaps = np.ones(n_lambdas)
     n_iters = np.zeros(n_lambdas)
     n_active_features = np.zeros(n_lambdas)
-    norm_X2 = np.sum(X ** 2, axis=0)
+
+    y = np.asfortranarray(y, dtype=float)
+    sparse = sp.sparse.issparse(X)
+
+    if sparse:
+        X_ = None
+        X_data = X.data
+        X_indices = X.indices
+        X_indptr = X.indptr
+        norm_X2 = sp.sparse.linalg.norm(X, axis=0) ** 2
+    else:
+        X_ = np.asfortranarray(X, dtype=float)
+        X_data = None
+        X_indices = None
+        X_indptr = None
+        norm_X2 = np.sum(X_ ** 2, axis=0)
 
     if beta_init is None:
         beta_init = np.zeros(n_features, dtype=float, order='F')
         norm1_beta = 0.
         p_obj = n_samples * np.log(2)
         Xbeta = np.zeros(n_samples, dtype=float, order='F')
-        exp_Xbeta = np.ones(n_samples, dtype=float, order='F')
         residual = np.asfortranarray(y - 0.5)
-
     else:
         norm1_beta = np.linalg.norm(beta_init, ord=1)
-        Xbeta = np.asfortranarray(np.dot(X, beta_init))
+        Xbeta = np.asfortranarray(X.dot(beta_init))
         exp_Xbeta = np.asfortranarray(np.exp(Xbeta))
         residual = np.asfortranarray(y - exp_Xbeta / (1. + exp_Xbeta))
         yTXbeta = np.dot(y, Xbeta)
         log_term = np.sum(np.log1p(exp_Xbeta))
         p_obj = -yTXbeta + log_term + lambdas[0] * norm1_beta
 
-    XTR = np.asfortranarray(np.dot(X.T, residual))
+    XTR = np.asfortranarray(X.T.dot(residual))
     dual_scale = lambdas[0]  # True only if beta lambdas[0] ==  lambda_max
 
     Hessian = np.zeros(n_features, dtype=float, order='F')
     Xbeta_next = np.zeros(n_samples, dtype=float, order='F')
 
-    # Fortran-contiguous array are used to avoid useless copy of the data.
-    X = np.asfortranarray(X, dtype=float)
-    y = np.asfortranarray(y, dtype=float)
     norm_X2 = np.asfortranarray(norm_X2)
 
     for t in range(n_lambdas):
@@ -149,17 +160,18 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, beta_init=None,
 
                 # solve the problem restricted to the strong active set
                 _, p_obj, norm1_beta, _, _, _ =\
-                    cd_logreg(X, y, beta_init, XTR, Xbeta, Hessian, Xbeta_next,
-                              residual, disabled_features, norm_X2, p_obj,
-                              norm1_beta, lambdas[t], tol, dual_scale,
-                              max_iter, f, screening, wstr_plus=1)
+                    cd_logreg(X_, X_data, X_indices, X_indptr, y, beta_init,
+                              XTR, Xbeta, Hessian, Xbeta_next, residual,
+                              disabled_features, norm_X2, p_obj, norm1_beta,
+                              lambdas[t], tol, dual_scale, max_iter, f,
+                              screening, wstr_plus=1, sparse=sparse)
 
         gaps[t], p_obj, norm1_beta, dual_scale, n_iters[t],\
             n_active_features[t] = \
-            cd_logreg(X, y, beta_init, XTR, Xbeta, Hessian, Xbeta_next,
-                      residual, disabled_features, norm_X2, p_obj, norm1_beta,
-                      lambdas[t], tol, dual_scale, max_iter, f, screening,
-                      wstr_plus=0)
+            cd_logreg(X_, X_data, X_indices, X_indptr, y, beta_init, XTR,
+                      Xbeta, Hessian, Xbeta_next, residual, disabled_features,
+                      norm_X2, p_obj, norm1_beta, lambdas[t], tol, dual_scale,
+                      max_iter, f, screening, wstr_plus=0, sparse=sparse)
 
         betas[t, :] = beta_init.copy()
 
@@ -175,8 +187,8 @@ if __name__ == '__main__':
 
     import sys
     import time
-    # sys.path.append('/home/endiaye/Documents/phd/lightning_private')
-    # from lightning.classification import CDClassifier
+    sys.path.append('/home/endiaye/Documents/phd/lightning_private')
+    from lightning.classification import CDClassifier
     from sklearn.datasets.mldata import fetch_mldata
 
     dataset = "leukemia"
@@ -184,8 +196,10 @@ if __name__ == '__main__':
     X = data.data
     y = data.target
     X = X.astype(float)
+    # y_blitz = y.copy()
     y[y == -1] = 0
     y = y.astype(float)
+    # X = sp.sparse.csc_matrix(X)
 
     # n_samples = 100
     # n_features = 1000
@@ -196,9 +210,36 @@ if __name__ == '__main__':
 
     # parameters
     lambda_max = np.linalg.norm(X.T.dot(0.5 - y), ord=np.inf)
-    lambda_ = lambda_max / 100.
+    lambdas = np.array([lambda_max / 10.])
+    eps = 1e-3
+    n_lambdas = 100
+    lambda_ratio = eps ** (1. / (n_lambdas - 1))
+    # lambdas = np.array([lambda_max * (lambda_ratio ** i) for i in range(0, n_lambdas)])
 
     tic = time.time()
-    beta, gap, n_iters, _ = logreg_path(X, y, [lambda_], eps=1e-8,
+    beta, gap, n_iters, _ = logreg_path(X, y, lambdas, eps=1e-8,
                                         screening=0, max_iter=1000)
     print "our time = ", time.time() - tic
+
+    # from blitz_path import blitz_path
+    # y_blitz = 2 * y - 1
+    # alpha_max_blitz = np.linalg.norm(np.dot(X.T, 0.5 - y_blitz), ord=np.inf)
+    # n_alphas = 100
+    # alphas_blitz  = np.array([alpha_max_blitz / 10.])
+    # alpha_ratio = eps ** (1. / (n_alphas - 1))
+    # alphas_blitz = np.logspace(np.log10(alpha_max_blitz / 1000.),
+    #                            np.log10(alpha_max_blitz), n_alphas)[::-1]
+    # tic = time.time()
+    # betas, gaps = blitz_path(X, y, lambdas, eps=1e-8,
+    #                          method="logreg", max_iter=int(1e5))
+    # print "time blitz = ", time.time() - tic
+
+    tic = time.time()
+    clf = CDClassifier(loss="log", alpha=lambdas[0], C=1.0, max_iter=1000,
+                       penalty='l1', tol=1e-8, termination='dual_gap',
+                       selection='cyclic')
+    clf.fit(X, y)
+    print("time lightning = ", time.time() - tic)
+    print clf.coef_[clf.coef_ != 0], "\n"
+    print beta[beta != 0]
+
