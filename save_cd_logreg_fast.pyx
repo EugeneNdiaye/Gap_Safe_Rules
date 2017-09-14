@@ -139,68 +139,68 @@ cdef void update_residual(int n_samples, double[::1] y, double * X_j,
     p_obj[0] = -yTXbeta[0] + log_term + lambda_ * norm1_beta
 
 
-cdef double step_size(double[::1] y, double * X_j, double[::1] Xbeta,
-                      double[::1] Xbeta_next, double[::1] X_data,
-                      int[::1] X_indices, double beta_j, double beta_prox,
-                      double delta, double p_obj, double norm1_beta_next,
-                      double XTR_j, double lambda_, int n_samples,
-                      int startptr, int endptr, int sparse) nogil:
-    cdef:
-        int numerical_issue = 0
-        int decrease = 0
-        int t = 0
-        int i = 0
-        int i_ptr = 0
-        double sigma = 0.01
-        double w = 0.5
-        double beta_next_old_j = 0.
-        double beta_next_j = beta_j
-        double yTXbeta_next = 0.
-        double log_term = 0.
-        double beta_diff = 0.
-        double norm_beta_j_term = \
-            lambda_ * (fabs(beta_j + delta) - fabs(beta_j))
-        double tmp = sigma * (norm_beta_j_term - XTR_j * delta)
+# cdef double step_size(double[::1] y, double * X_j, double[::1] Xbeta,
+#                       double[::1] Xbeta_next, double[::1] X_data,
+#                       int[::1] X_indices, double beta_j, double beta_prox,
+#                       double delta, double p_obj, double norm1_beta_next,
+#                       double XTR_j, double lambda_, int n_samples,
+#                       int startptr, int endptr, int sparse) nogil:
+#     cdef:
+#         int numerical_issue = 0
+#         int decrease = 0
+#         int t = 0
+#         int i = 0
+#         int i_ptr = 0
+#         double sigma = 0.01
+#         double w = 0.5
+#         double beta_next_old_j = 0.
+#         double beta_next_j = beta_j
+#         double yTXbeta_next = 0.
+#         double log_term = 0.
+#         double beta_diff = 0.
+#         double norm_beta_j_term = \
+#             lambda_ * (fabs(beta_j + delta) - fabs(beta_j))
+#         double tmp = sigma * (norm_beta_j_term - XTR_j * delta)
 
-    dcopy(& n_samples, & Xbeta[0], & inc, & Xbeta_next[0], & inc)
+#     dcopy(& n_samples, & Xbeta[0], & inc, & Xbeta_next[0], & inc)
 
-    while decrease == 0:
+#     while decrease == 0:
 
-        alpha = w ** t
+#         alpha = w ** t
 
-        beta_next_old_j = beta_next_j
-        beta_next_j = (1. - alpha) * beta_j + alpha * beta_prox
-        beta_diff = beta_next_j - beta_next_old_j
+#         beta_next_old_j = beta_next_j
+#         beta_next_j = (1. - alpha) * beta_j + alpha * beta_prox
+#         beta_diff = beta_next_j - beta_next_old_j
 
-        if beta_diff == 0.:
-            break
+#         if beta_diff == 0.:
+#             break
 
-        norm1_beta_next += fabs(beta_next_j) - fabs(beta_next_old_j)
-        yTXbeta_next = 0.
-        log_term = 0.
+#         norm1_beta_next += fabs(beta_next_j) - fabs(beta_next_old_j)
+#         yTXbeta_next = 0.
+#         log_term = 0.
 
-        if sparse:
-            for i_ptr in range(startptr, endptr):
-                i = X_indices[i_ptr]
-                Xbeta_next[i] += X_data[i_ptr] * beta_diff
-                yTXbeta_next += y[i] * Xbeta_next[i]
+#         if sparse:
+#             for i_ptr in range(startptr, endptr):
+#                 i = X_indices[i_ptr]
+#                 Xbeta_next[i] += X_data[i_ptr] * beta_diff
+#                 yTXbeta_next += y[i] * Xbeta_next[i]
 
-            for i in range(n_samples):
-                log_term += log1p(exp(Xbeta_next[i]))
-        else:
-            for i in range(n_samples):
-                Xbeta_next[i] += X_j[i] * beta_diff
-                yTXbeta_next += y[i] * Xbeta_next[i]
-                log_term += log1p(exp(Xbeta_next[i]))
+#             for i in range(n_samples):
+#                 log_term += log1p(exp(Xbeta_next[i]))
+#         else:
+#             for i in range(n_samples):
+#                 Xbeta_next[i] += X_j[i] * beta_diff
+#                 yTXbeta_next += y[i] * Xbeta_next[i]
+#                 log_term += log1p(exp(Xbeta_next[i]))
 
-        p_obj_next = -yTXbeta_next + log_term + lambda_ * norm1_beta_next
+#         p_obj_next = -yTXbeta_next + log_term + lambda_ * norm1_beta_next
 
-        numerical_issue = isclose(p_obj_next - p_obj, alpha * tmp)
-        if p_obj_next - p_obj <= alpha * tmp or numerical_issue:
-            decrease = 1
-        t += 1
+#         numerical_issue = isclose(p_obj_next - p_obj, alpha * tmp)
+#         if p_obj_next - p_obj <= alpha * tmp or numerical_issue:
+#             decrease = 1
+#         t += 1
 
-    return alpha
+#     return alpha
 
 
 def cd_logreg(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
@@ -359,16 +359,17 @@ def cd_logreg(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
 
                 beta[j] = ST(mu, beta[j] + XTR[j] / L_j)
                 # beta_prox_j = ST(mu, beta[j] + XTR[j] / L_j)
-                # line search
+                # # line search
                 # delta_j = beta_prox_j - beta[j]
                 # alpha_j = step_size(y, & X[0, j], Xbeta, Xbeta_next, X_data,
                 #                     X_indices, beta[j], beta_prox_j, delta_j,
                 #                     p_obj, norm1_beta, XTR[j], lambda_,
                 #                     n_samples, startptr, endptr, sparse)
 
-                # Update beta[j]
+                # # Update beta[j]
                 # with gil:
-                #     print "alpha_j = ", alpha_j
+                #     if alpha_j != 1.:
+                #         print "alpha_j = ", alpha_j
                 # beta[j] = beta[j] + alpha_j * delta_j
                 beta_diff = beta[j] - beta_old_j
 

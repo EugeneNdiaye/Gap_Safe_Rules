@@ -210,15 +210,16 @@ if __name__ == '__main__':
 
     # parameters
     lambda_max = np.linalg.norm(X.T.dot(0.5 - y), ord=np.inf)
-    lambdas = np.array([lambda_max / 10.])
+    lambdas = np.array([lambda_max / 5.])
     eps = 1e-3
     n_lambdas = 100
     lambda_ratio = eps ** (1. / (n_lambdas - 1))
-    # lambdas = np.array([lambda_max * (lambda_ratio ** i) for i in range(0, n_lambdas)])
+    lambdas = np.array([lambda_max * (lambda_ratio ** i) for i in range(0, n_lambdas)])
 
     tic = time.time()
     beta, gap, n_iters, _ = logreg_path(X, y, lambdas, eps=1e-8,
-                                        screening=0, max_iter=1000)
+                                        screening=2, max_iter=1000,
+                                        strong_active_warm_start=True)
     print "our time = ", time.time() - tic
 
     # from blitz_path import blitz_path
@@ -234,12 +235,12 @@ if __name__ == '__main__':
     #                          method="logreg", max_iter=int(1e5))
     # print "time blitz = ", time.time() - tic
 
-    tic = time.time()
-    clf = CDClassifier(loss="log", alpha=lambdas[0], C=1.0, max_iter=1000,
-                       penalty='l1', tol=1e-8, termination='dual_gap',
-                       selection='cyclic')
-    clf.fit(X, y)
-    print("time lightning = ", time.time() - tic)
-    print clf.coef_[clf.coef_ != 0], "\n"
-    print beta[beta != 0]
+    # tic = time.time()
+    # clf = CDClassifier(loss="log", alpha=lambdas[0], C=1.0, max_iter=1000,
+    #                    penalty='l1', tol=1e-8, termination='dual_gap',
+    #                    selection='cyclic')
+    # clf.fit(X, y)
+    # print("time lightning = ", time.time() - tic)
+    # print clf.coef_[clf.coef_ != 0], "\n"
+    # print beta[beta != 0]
 
