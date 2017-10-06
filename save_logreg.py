@@ -18,7 +18,7 @@ GAPSAFE = 2
 
 def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, beta_init=None,
                 screening=GAPSAFE, gap_active_warm_start=False,
-                strong_active_warm_start=False, warm_start_plus=False):
+                strong_active_warm_start=False):
 
     """Compute l1-regularized logistic regression path with coordinate descent
 
@@ -151,7 +151,8 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, beta_init=None,
         if active_warm_start and t != 0:
 
             if strong_active_warm_start:
-                disabled_features = (np.abs(XTR) < 2. * lambdas[t] - lambdas[t - 1]).astype(np.intc)
+                disabled_features = (np.abs(XTR) < 2. * lambdas[t] -
+                                     lambdas[t - 1]).astype(np.intc)
 
             if gap_active_warm_start:
                 run_active_warm_start = n_active_features[t] < n_features

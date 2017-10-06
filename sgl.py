@@ -1,3 +1,4 @@
+from __future__ import print_function
 # Author: Eugene Ndiaye
 #         Olivier Fercoq
 #         Alexandre Gramfort
@@ -8,29 +9,16 @@
 
 import numpy as np
 from sgl_fast import bcd_fast
-from sgl_tools import build_lambdas, precompute_norm, precompute_DGST3
+from sgl_tools import build_lambdas, precompute_norm
 
 NO_SCREENING = 0
-
-STATIC_SAFE = 1
-DYNAMIC_SAFE = 2
-DST3 = 3
-
-GAPSAFE_SEQ = 4
-GAPSAFE = 5
-
-GAPSAFE_SEQ_pp = 6
-GAPSAFE_pp = 7
-
-STRONG_RULE = 8
-TLFre = 9
-
-STRONG_GAP_SAFE = 666
+GAPSAFE_SEQ = 1
+GAPSAFE = 2
 
 
 def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
              tau=0.5, lambda2=0, max_iter=30000, f=10, eps=1e-4,
-             warm_start_plus=False):
+             gap_active_warm_start=False, strong_active_warm_start=False):
 
     """Compute Sparse-Group-Lasso path with block coordinate descent
 
@@ -62,26 +50,10 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
 
         NO_SCREENING = 0 : Standard method
 
-        STATIC_SAFE = 1 : Use static safe screening rule
-            cf. El Ghaoui, L., Viallon, V., and Rabbani, T.
-            "Safe feature elimination in sparse supervised learning".
-            J. Pacific Optim., 2012.
-
-        DYNAMIC_SAFE = 2 : Use dynamic safe screening rule
-            cf. Bonnefoy, A., Emiya, V., Ralaivola, L., and Gribonval, R.
-            "Dynamic Screening: Accelerating First-Order Al-
-            gorithms for the Lasso and Group-Lasso".
-            IEEE Trans. Signal Process., 2015.
-
-        DST3 = 3 : Adaptation of the DST3 safe screening rules
-            cf.  Xiang, Z. J., Xu, H., and Ramadge, P. J.,
-            "Learning sparse representations of high dimensional data on large
-            scale dictionaries". NIPS 2011
-
-        GAPSAFE_SEQ = 4 : Proposed safe screening rule using duality gap
+        GAPSAFE_SEQ = 1 : Proposed safe screening rule using duality gap
                                  in a sequential way.
 
-        GAPSAFE = 5 : Proposed safe screening rule using duality gap in both a
+        GAPSAFE = 2 : Proposed safe screening rule using duality gap in both a
                       sequential and dynamic way.
 
     beta_init : array, shape (n_features, ), optional
@@ -123,9 +95,6 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
     """
 
     n_groups = len(size_groups)
-    # g_start = np.zeros(n_groups, order='F', dtype=np.intc)
-    # for i in range(1, n_groups):
-    #     g_start[i] = size_groups[i - 1] + g_start[i - 1]
     g_start = np.cumsum(size_groups, dtype=np.intc) - size_groups[0]
 
     if lambdas is None:
@@ -134,29 +103,6 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
     # Useful precomputation
     norm_X, norm_X_g, nrm2_y = precompute_norm(X, y, size_groups, g_start)
     tol = eps * nrm2_y  # duality gap tolerance
-
-    # We take arbitrary values since they are not used by others rules
-    nDST3 = np.ones(1)
-    norm2_nDST3 = 1
-    tau_w_star = 1
-    g_max = np.ones(1)
-    len_g_max = 1
-
-    if screen == DST3:
-        if lambdas is not None:
-            _, imax = build_lambdas(X, y, omega, size_groups, g_start)
-
-        nDST3, norm2_nDST3, nDST3Ty = \
-            precompute_DGST3(X, y, tau, omega, lambdas[0], imax, size_groups,
-                             g_start)
-        tau_w_star = tau + (1. - tau) * omega[imax]
-
-    if screen == TLFre:
-        if lambdas is not None:
-            _, imax = build_lambdas(X, y, omega, size_groups, g_start)
-
-        g_max = range(g_start[imax], g_start[imax] + size_groups[imax])
-        len_g_max = len(g_max)
 
     n_lambdas = len(lambdas)
     n_samples, n_features = X.shape
@@ -170,7 +116,6 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
     norm2_X_g = np.asfortranarray(norm_X_g ** 2)
     omega = np.asfortranarray(omega)
     g_start = np.asfortranarray(g_start, dtype=np.intc)
-    g_max = np.asfortranarray(g_max, dtype=np.intc)
 
     if beta_init is None:
         beta_init = np.zeros(n_features, order='F')
@@ -190,6 +135,9 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
     disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
     disabled_groups = np.zeros(n_groups, dtype=np.intc, order='F')
 
+    active_ws = False
+    strong_ws = False
+
     for t in range(n_lambdas):
 
         if t == 0:
@@ -197,61 +145,33 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
         else:
             lambda_prec = lambdas[t - 1]
 
-        if screen == STRONG_GAP_SAFE:
+        if strong_active_warm_start:
+            strong_ws = True
 
-            # TODO: cythonize the strong gap safe
+        if gap_active_warm_start:
+            active_ws = (screening_sizes_features[t] < n_features or
+                         screening_sizes_groups[t] < n_groups)
+
+        if strong_ws or active_ws:
+
             bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
                      n_samples, n_features, n_groups, size_groups, g_start,
-                     g_max, len_g_max,
                      norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t],
-                     lambda_prec, lambda2, lambda_max, max_iter, f, tol,
-                     screen, nDST3, norm2_nDST3, tau_w_star,
-                     disabled_features, disabled_groups, wstr_plus=0)
+                     lambda_prec, lambda2, max_iter, f, tol,
+                     screen, disabled_features, disabled_groups,
+                     wstr_plus=active_ws, strong_warm_start=strong_ws)
 
-            screen = GAPSAFE  # deactivate the strong rule
-
-            model = bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
-                             n_samples, n_features, n_groups, size_groups, g_start,
-                             g_max, len_g_max,
-                             norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t],
-                             lambda_prec, lambda2, lambda_max, max_iter, f, tol,
-                             screen, nDST3, norm2_nDST3, tau_w_star,
-                             disabled_features, disabled_groups, wstr_plus=0)
-
-            screen = STRONG_GAP_SAFE  # reactivate the strong rule
-
-        else:
-            model = bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
-                             n_samples, n_features, n_groups, size_groups, g_start,
-                             g_max, len_g_max,
-                             norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t],
-                             lambda_prec, lambda2, lambda_max, max_iter, f, tol,
-                             screen, nDST3, norm2_nDST3, tau_w_star,
-                             disabled_features, disabled_groups, wstr_plus=0)
+        model = bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
+                         n_samples, n_features, n_groups, size_groups, g_start,
+                         norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t],
+                         lambda_prec, lambda2, max_iter, f, tol,
+                         screen, disabled_features, disabled_groups,
+                         wstr_plus=0, strong_warm_start=0)
 
         dual_scale, dual_gaps[t], n_active_groups, n_active_features, \
             n_iters[t] = model
 
         coefs[:, t] = beta_init.copy()
-
-        if t == 0 and screen != NO_SCREENING:
-            screening_sizes_features[0] = 0
-            screening_sizes_groups[0] = 0
-        else:
-            screening_sizes_groups[t] = n_active_groups
-            screening_sizes_features[t] = n_active_features
-
-        if warm_start_plus and t < n_lambdas - 1 and t != 0 and \
-           (screening_sizes_features[t] < n_features or
-                screening_sizes_groups[t] < n_groups):
-
-            bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
-                     n_samples, n_features, n_groups, size_groups, g_start,
-                     g_max, len_g_max,
-                     norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t + 1],
-                     lambda_prec, lambda2, lambda_max, max_iter, f, tol,
-                     screen, nDST3, norm2_nDST3, tau_w_star,
-                     disabled_features, disabled_groups, wstr_plus=1)
 
         if abs(dual_gaps[t]) > tol:
             print("Warning did not converge ... t = %s gap = %s eps = %s n_iter = %s" %
@@ -259,3 +179,27 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
 
     return (coefs, dual_gaps, lambdas, screening_sizes_groups,
             screening_sizes_features, n_iters)
+
+
+if __name__ == '__main__':
+
+    from sgl_tools import generate_data
+    import time
+
+    n_samples = 50
+    n_features = 800
+    size_group = 40  # all groups have size = size_group
+    delta = 3
+    tau = .34
+
+    n_groups = n_features / size_group
+    size_groups = size_group * np.ones(n_groups, order='F', dtype=np.intc)
+    omega = np.ones(n_groups)
+    groups = np.arange(n_features) // size_group
+    group_labels = [np.where(groups == i)[0] for i in np.unique(groups)]
+    X, y = generate_data(n_samples, n_features, size_groups, rho=0.4)
+
+    tic = time.time()
+    gaps = sgl_path(X, y, size_groups, omega, screen=2, tau=tau, max_iter=1e5,
+                    eps=1e-14, strong_active_warm_start=True)[1]
+    print("time = ", time.time() - tic)

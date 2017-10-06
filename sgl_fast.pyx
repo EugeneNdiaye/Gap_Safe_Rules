@@ -1,3 +1,6 @@
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
 # Author: Eugene Ndiaye
 #         Olivier Fercoq
 #         Alexandre Gramfort
@@ -13,21 +16,11 @@ import numpy as np
 cimport numpy as np
 cimport cython
 
-cdef int NO_SCREENING = 0
-
-cdef int STATIC_SAFE = 1
-cdef int DYNAMIC_SAFE = 2
-cdef int DST3 = 3
-
-cdef int GAPSAFE_SEQ = 4
-cdef int GAPSAFE = 5
-
-cdef int GAPSAFE_SEQ_pp = 6
-cdef int GAPSAFE_pp = 7
-
-cdef int STRONG_RULE = 8
-cdef int TLFre = 9
-cdef int SAFE_STRONG_RULE = 666
+cdef:
+    int inc = 1
+    int NO_SCREENING = 0
+    int GAPSAFE_SEQ = 1
+    int GAPSAFE = 2
 
 
 cdef inline double fmax(double x, double y) nogil:
@@ -44,11 +37,13 @@ cdef inline double fsign(double f) nogil:
     else:
         return -1.0
 
+
 cdef double abs_max(int n, double * a) nogil:
     """np.max(np.abs(a))"""
-    cdef int i
-    cdef double m = fabs(a[0])
-    cdef double d
+    cdef:
+        int i
+        double m = fabs(a[0])
+        double d
     for i in range(1, n):
         d = fabs(a[i])
         if d > m:
@@ -58,9 +53,10 @@ cdef double abs_max(int n, double * a) nogil:
 
 cdef double max(int n, double * a) nogil:
     """np.max(a)"""
-    cdef int i
-    cdef double m = a[0]
-    cdef double d
+    cdef:
+        int i
+        double m = a[0]
+        double d
     for i in range(1, n):
         d = a[i]
         if d > m:
@@ -68,13 +64,7 @@ cdef double max(int n, double * a) nogil:
     return m
 
 
-# mimic rounding to zero
-# cdef double near_zero(double a) nogil:
-#     if fabs(a) <= 1e-14:
-#         return 0
-#     return a
-
-cdef double near_zero(double a) nogil:
+cdef inline double near_zero(double a) nogil:
     if fabs(a) <= 1e-14:
         return fabs(a)
     return a
@@ -87,11 +77,11 @@ cdef double primal_value(int n_samples, int n_features, int n_groups,
                          double residual_norm2, double norm_beta2,
                          double lambda_, double lambda2, double tau) nogil:
 
-    cdef double group_norm = 0.
-    cdef double l1_norm = 0.
-    cdef double fval = 0.
-    cdef int i = 0
-    cdef int inc = 1
+    cdef:
+        double group_norm = 0.
+        double l1_norm = 0.
+        double fval = 0.
+        int i = 0
 
     # group_norm_beta = np.sum([linalg.norm(beta[u], ord=2)
     #                          for u in group_labels])
@@ -119,41 +109,31 @@ cdef double primal_value(int n_samples, int n_features, int n_groups,
     return fval
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.cdivision(True)
 cdef double dual(int n_samples, int n_features, double * residual,
                  double * beta, double * y, double dual_scale,
                  double residual_norm2, double beta_norm2,
                  double lambda_, double lambda2) nogil:
 
-    cdef int i = 0
-    cdef int inc = 1
-    cdef double Ry = ddot(& n_samples, & residual[0], & inc, & y[0], & inc)
-
-    dval = ((-0.5 * (lambda_ ** 2) * (residual_norm2 + lambda2 * beta_norm2)
-              / (dual_scale ** 2)) + lambda_ * Ry / dual_scale)
+    cdef:
+        double Ry = ddot(& n_samples, & residual[0], & inc, & y[0], & inc)
+        double dval = ((-0.5 * (lambda_ ** 2) *
+                        (residual_norm2 + lambda2 * beta_norm2) /
+                        (dual_scale ** 2)) + lambda_ * Ry / dual_scale)
 
     return dval
 
 
-cdef double segment_project(double x, double a, double b) nogil:
-    return -fmax(-b, -fmax(x, a))
-
-
 cdef int compare_doubles(void * a, void * b) nogil:
 
-    cdef double * da = <double * > a
-    cdef double * db = <double * > b
+    cdef:
+        double * da = <double * > a
+        double * db = <double * > b
 
     return (da[0] < db[0]) - (da[0] > db[0])
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.cdivision(True)
 cdef double epsilon_norm(int len_x, double * x, double alpha, double R,
-                         double[:] zx) nogil:
+                         double[::1] zx) nogil:
 
     """
         Compute the solution in nu of the equation
@@ -163,31 +143,30 @@ cdef double epsilon_norm(int len_x, double * x, double alpha, double R,
     # if alpha == 0 and R == 0:  # this case never happen
     #   return np.inf
 
-    cdef int inc = 1
-
     if alpha == 0 and R != 0:
         return dnrm2(& len_x, x, & inc) / R
 
     # j0 = 0 iif R = 0
-    if R == 0:
+    if R == 0.:
         return abs_max(len_x, x) / alpha
 
-    cdef double R2 = R * R
-    cdef double alpha2 = alpha * alpha
-    cdef double delta = 0.
-    cdef double R2onalpha2 = R2 / alpha2
-    cdef double alpha2j0 = 0.
-    cdef double j0alpha2_R2 = 0.
-    cdef double alpha_S = 0.
-    cdef double S = 0.
-    cdef double S2 = 0.
-    cdef double a_k = 0.
-    cdef double b_k = 0.
-    cdef int j0 = 0
-    cdef int k = 0
-    cdef int n_I = 0
-    cdef double norm_inf = abs_max(len_x, x)
-    cdef double ratio_ = alpha * (norm_inf) / (alpha + R)
+    cdef:
+        double R2 = R * R
+        double alpha2 = alpha * alpha
+        double delta = 0.
+        double R2onalpha2 = R2 / alpha2
+        double alpha2j0 = 0.
+        double j0alpha2_R2 = 0.
+        double alpha_S = 0.
+        double S = 0.
+        double S2 = 0.
+        double a_k = 0.
+        double b_k = 0.
+        int j0 = 0
+        int k = 0
+        int n_I = 0
+        double norm_inf = abs_max(len_x, x)
+        double ratio_ = alpha * (norm_inf) / (alpha + R)
 
     if norm_inf == 0:
         return 0
@@ -245,23 +224,20 @@ cdef double dual_gap(int n_samples, int n_features, int n_groups,
                      double residual_norm2, double norm_beta2,
                      double lambda_, double lambda2, double tau) nogil:
 
-    cdef double pobj = primal_value(n_samples, n_features, n_groups,
-                                    size_groups, g_start, omega, residual,
-                                    beta, disabled_groups, disabled_features,
-                                    residual_norm2, norm_beta2,
-                                    lambda_, lambda2, tau)
+    cdef:
+        double pobj = primal_value(n_samples, n_features, n_groups,
+                                   size_groups, g_start, omega, residual,
+                                   beta, disabled_groups, disabled_features,
+                                   residual_norm2, norm_beta2,
+                                   lambda_, lambda2, tau)
 
-    cdef double dobj = dual(n_samples, n_features, residual,
-                            beta, y, dual_scale,
-                            residual_norm2, norm_beta2, lambda_, lambda2)
+        double dobj = dual(n_samples, n_features, residual, beta, y,
+                           dual_scale, residual_norm2, norm_beta2, lambda_,
+                           lambda2)
 
-    cdef double gap_ = pobj - dobj
-    return gap_
+    return pobj - dobj
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.cdivision(True)
 cdef void fscreen_sgl(double * beta, double * XTc, double[::1, :] X,
                       double * residual, double * XTR, int * disabled_features,
                       int * disabled_groups, int * size_groups,
@@ -270,17 +246,17 @@ cdef void fscreen_sgl(double * beta, double * XTc, double[::1, :] X,
                       int * n_active_features, int * n_active_groups,
                       double tau, double * omega) nogil:
 
-    cdef int i = 0
-    cdef int j = 0
-    cdef int len_g = 0
-    cdef int g_end = 0
-    cdef double norm_XTc_g = 0.
-    cdef double r_normX_g = 0.
-    cdef double r_normX_j = 0.
-    cdef double ftest = 0.
-    cdef int sphere_test_g = 0
-    cdef int sphere_test_j = 0
-    cdef int inc = 1
+    cdef:
+        int i = 0
+        int j = 0
+        int len_g = 0
+        int g_end = 0
+        double norm_XTc_g = 0.
+        double r_normX_g = 0.
+        double r_normX_j = 0.
+        double ftest = 0.
+        int sphere_test_g = 0
+        int sphere_test_j = 0
 
     # Safe rule for Group level
     for i in range(n_groups):
@@ -319,8 +295,7 @@ cdef void fscreen_sgl(double * beta, double * XTc, double[::1, :] X,
 
                     if beta[j] != 0.:
                         # residual -= X[:, j] * (-beta[j])
-                        daxpy(& n_samples, & beta[j], & X[0, j], & inc,
-                              residual, & inc)
+                        daxpy(& n_samples, & beta[j], & X[0, j], & inc, residual, & inc)
                         beta[j] = 0.
 
                     XTR[j] = 0.
@@ -346,6 +321,7 @@ cdef void fscreen_sgl(double * beta, double * XTc, double[::1, :] X,
                 if tau < 1.:
                     sphere_test_j = fabs(XTc[j]) + r_normX_j <= tau
                 else:
+                    # we can take strict inequality in the case tau=1
                     sphere_test_j = fabs(XTc[j]) + r_normX_j < tau
 
                 if sphere_test_j:
@@ -353,8 +329,7 @@ cdef void fscreen_sgl(double * beta, double * XTc, double[::1, :] X,
                     # Update residual
                     if beta[j] != 0.:
                         # residual -= X[:, j] * (beta[j] - beta_old[j])
-                        daxpy(& n_samples, & beta[j], & X[0, j], & inc,
-                              residual, & inc)
+                        daxpy(& n_samples, & beta[j], & X[0, j], & inc, residual, & inc)
                         beta[j] = 0.
 
                     # # we "set" x_j to zero since the j_th feature is inactive
@@ -363,9 +338,6 @@ cdef void fscreen_sgl(double * beta, double * XTc, double[::1, :] X,
                     n_active_features[0] -= 1
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.cdivision(True)
 cdef void prox_sgl(int n_samples, int n_features, int n_groups,
                    double * beta, double * beta_old, double[::1, :] X,
                    double * residual, double * XTR,
@@ -374,16 +346,16 @@ cdef void prox_sgl(int n_samples, int n_features, int n_groups,
                    int * g_start, double lambda_, double lambda2,
                    double tau, double * omega) nogil:
 
-    cdef int i = 0
-    cdef int j = 0
-    cdef int inc = 1
-    cdef int g_end = 0
-    cdef double mu_st = 0.
-    cdef double mu_g = 0.
-    cdef double L_g = 0.  # Lipschitz constants
-    cdef double norm_beta_g = 0.
-    cdef double scaling = 0.
-    cdef double double_tmp = 0.
+    cdef:
+        int i = 0
+        int j = 0
+        int g_end = 0
+        double mu_st = 0.
+        double mu_g = 0.
+        double L_g = 0.  # Lipschitz constants
+        double norm_beta_g = 0.
+        double scaling = 0.
+        double double_tmp = 0.
 
     for i in range(n_groups):
 
@@ -432,26 +404,22 @@ cdef void prox_sgl(int n_samples, int n_features, int n_groups,
             if beta[j] != beta_old[j]:
                 # residual -= X[:, j] * (beta[j] - beta_old[j])
                 double_tmp = -beta[j] + beta_old[j]
-                daxpy(& n_samples, & double_tmp, & X[0, j], & inc,
-                      & residual[0], & inc)
+                daxpy(& n_samples, & double_tmp, & X[0, j], & inc, & residual[0], & inc)
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.cdivision(True)
 cdef double dual_scaling(int n_samples, int n_features, int n_groups,
                          double * beta, double[::1, :] X, double * residual,
                          double * XTR, int * disabled_features,
                          int * disabled_groups, int * size_groups,
                          int * g_start, double lambda_, double lambda2,
-                         double tau, double * omega, double[:] zx) nogil:
+                         double tau, double * omega, double[::1] zx) nogil:
 
-    cdef int i = 0
-    cdef int j = 0
-    cdef int inc = 1
-    cdef double dual_scale = 0.
-    cdef double double_tmp = 0.
-    cdef double tg = 0.
+    cdef:
+        int i = 0
+        int j = 0
+        double dual_scale = 0.
+        double double_tmp = 0.
+        double tg = 0.
 
     for i in range(n_groups):
 
@@ -465,8 +433,7 @@ cdef double dual_scaling(int n_samples, int n_features, int n_groups,
                 continue
 
             # XTR[j] = np.dot(X[:, j], residual) - lambda2 * beta
-            double_tmp = ddot(& n_samples, & X[0, j], & inc,
-                              & residual[0], & inc)
+            double_tmp = ddot(& n_samples, & X[0, j], & inc, & residual[0], & inc)
             XTR[j] = double_tmp - lambda2 * beta[j]
 
         tg = ((1. - tau) * omega[i]) / (tau + (1. - tau) * omega[i])
@@ -479,19 +446,15 @@ cdef double dual_scaling(int n_samples, int n_features, int n_groups,
     return dual_scale
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.cdivision(True)
-def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
-             double[:] XTR, double[:] residual, double dual_scale,
-             double[:] omega, int n_samples, int n_features, int n_groups,
-             int[:] size_groups, int[:] g_start, int[:] g_max, int len_g_max,
-             double[:] norm2_X, double[:] norm2_X_g, double nrm2_y,
-             double tau, double lambda_, double lambda_prec, double lambda2,
-             double lambda_max, int max_iter, int f, double tol,
-             int screen, double[:] n_DST3, double norm2_nDST3,
-             double tau_w_star, int[:] disabled_features,
-             int[:] disabled_groups, int wstr_plus):
+def bcd_fast(double[::1, :] X, double[::1] y, double[::1] beta,
+             double[::1] XTR, double[::1] residual, double dual_scale,
+             double[::1] omega, int n_samples, int n_features, int n_groups,
+             int[::1] size_groups, int[::1] g_start, double[::1] norm2_X,
+             double[::1] norm2_X_g, double nrm2_y, double tau, double lambda_,
+             double lambda_prec, double lambda2, int max_iter, int f,
+             double tol, int screen, int[::1] disabled_features,
+             int[::1] disabled_groups, int wstr_plus=0,
+             int strong_warm_start=0):
     """
         Solve the sparse-group-lasso regression with elastic-net
         We minimize
@@ -501,41 +464,29 @@ def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
                       (1 - tau) * sum_g omega_g * norm(beta_g, 2)
     """
 
-    cdef int i = 0
-    cdef int j = 0
-    cdef int g_end = 0
-    cdef int n_active_groups = n_groups
-    cdef int n_active_features = n_features
-    cdef int inc = 1
-    cdef int n_iter = 0
+    cdef:
+        int i = 0
+        int j = 0
+        int g_end = 0
+        int n_active_groups = n_groups
+        int n_active_features = n_features
+        int n_iter = 0
 
-    cdef double r = 666.  # radius in the screening rules
-    cdef double gap_t = 666.
-    cdef double double_tmp = 0.
-    cdef double tg = 0.
-    cdef double norm_ST_g = 0.
+        double r = 666.  # radius in the screening rules
+        double gap_t = 666.
+        double double_tmp = 0.
+        double tg = 0.
+        double norm_ST_g = 0.
+        # zx is a temporary array used in dual_scaling (without gil)
+        # TODO: compute this only on time and pass it to the function
+        double[::1] zx = np.zeros(n_features, order='F')
+        double residual_norm2 = 0.
+        double norm_beta2 = 0.
 
-    # zx is a temporary array used in dual_scaling (without gil)
-    cdef double[:] zx = np.zeros(n_features, order='F')
-
-    cdef double tmp_DST3 = lambda_max / lambda_ - tau_w_star
-    cdef double delta_DST3 = tmp_DST3 / norm2_nDST3
-    cdef double norm2_y_on_lambda_minus_center = 0.
-    cdef double residual_norm2 = dnrm2(& n_samples, & residual[0], & inc) ** 2
-    cdef double norm_beta2 = dnrm2(& n_features, & beta[0], & inc) ** 2
-
-    cdef double[:] beta_old = np.zeros(n_features, order='F')
-    cdef double[:] XTc = np.zeros(n_features, order='F')
-    cdef double[:] center = np.zeros(n_samples, order='F')
-
-    # For TLFre
-    cdef double[:] n = np.zeros(n_samples, order='F')
-    cdef double[:] v = np.zeros(n_samples, order='F')
-    cdef double[:] v_orth = np.zeros(n_samples, order='F')
-    cdef double norm_n2 = 0.
-    cdef double vn = 0.
-
-    cdef int violation = n_features
+        double[::1] beta_old = np.zeros(n_features, order='F')
+        double[::1] XTc = np.zeros(n_features, order='F')
+        double[::1] center = np.zeros(n_samples, order='F')
+        # TODO: avoid the use of the vector center
 
     with nogil:
 
@@ -546,86 +497,7 @@ def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
             for i in range(n_groups):
                 disabled_groups[i] = 0
 
-        # if screen == SAFE_STRONG_RULE:
-        #     screen = GAPSAFE
-
-        if screen == DST3:
-
-            for i in range(n_samples):
-                center[i] = y[i] / lambda_ - delta_DST3 * n_DST3[i]
-
-            # r is computed dynamically
-            # XTc = np.dot(X.T, center)
-            for j in range(n_features):
-                XTc[j] = ddot(& n_samples, & X[0, j], & inc, & center[0], & inc)
-
-        if screen == DYNAMIC_SAFE:
-            # center = y / lambda_
-            for i in range(n_samples):
-                center[i] = y[i] / lambda_
-            # r is computed dynamically
-            # XTc = np.dot(X.T, center)
-            for j in range(n_features):
-                XTc[j] = ddot(& n_samples, & X[0, j], & inc, & center[0], & inc)
-
-        if screen == STATIC_SAFE:
-
-            r = fabs(1. / lambda_max - 1. / lambda_) * sqrt(nrm2_y)
-            # center = y / lambda_
-            for i in range(n_samples):
-                center[i] = y[i] / lambda_
-
-            # XTc = np.dot(X.T, center)
-            for j in range(n_features):
-                XTc[j] = ddot(& n_samples, & X[0, j], & inc, & center[0], & inc)
-
-            if screen == TLFre:
-
-                # theta_TLFre = residual / dual_scale = preceeding dual solution
-                if lambda_prec == lambda_max:
-                    for i in range(n_samples):
-                        for j in range(len_g_max):
-                           n[i] += X[i, g_max[j]] * ST(tau, X[i, g_max[j]] * y[i] / lambda_max)
-                else:
-                    for i in range(n_samples):
-                        n[i] = y[i] / lambda_prec - residual[i] / dual_scale
-
-                for i in range(n_samples):
-                    v[i] = y[i] / lambda_ - residual[i] / dual_scale
-
-                # norm_n2 = linalg.norm(n, ord=2) ** 2
-                norm_n2 = dnrm2(& n_samples, & n[0], & inc) ** 2
-
-                if norm_n2 != 0:
-                    # vn = np.dot(v, n)
-                    vn = ddot(& n_samples, & v[0], & inc, & n[0], & inc)
-                    # v_orth = v - (vn / norm_n2) * n
-                    for i in range(n_samples):
-                        v_orth[i] = v[i] - (vn / norm_n2) * n[i]
-                else:
-                    for i in range(n_samples):
-                        v_orth[i] = v[i]
-
-                # center = theta_TLFre + 0.5 * v_orth
-                for i in range(n_samples):
-                    center[i] = residual[i] / dual_scale + 0.5 * v_orth[i]
-                # r = 0.5 * linalg.norm(v_orth, ord=2)
-                r = 0.5 * dnrm2(& n_samples, & v_orth[0], & inc)
-                # XTc = np.dot(X.T, center)
-                for j in range(n_features):
-                    XTc[j] = ddot(& n_samples, & X[0, j], & inc,
-                                  & center[0], & inc)
-
-        if screen in [STATIC_SAFE, TLFre]:
-
-            fscreen_sgl(
-                & beta[0], & XTc[0], X, & residual[0], & XTR[0],
-                & disabled_features[0], & disabled_groups[0],
-                & size_groups[0], & norm2_X[0], & norm2_X_g[0],
-                & g_start[0], n_groups, r, n_samples,
-                & n_active_features, & n_active_groups, tau, & omega[0])
-
-        if screen in [STRONG_RULE, SAFE_STRONG_RULE]:
+        if strong_warm_start:
 
             for i in range(n_groups):
 
@@ -639,159 +511,64 @@ def bcd_fast(double[::1, :] X, double[:] y, double[:] beta,
 
                 if double_tmp < 2 * lambda_ - lambda_prec:
                         disabled_groups[i] = 1
-                        n_active_groups -= 1
-                        n_active_features -= size_groups[i]
-                        for j in range(g_start[i], g_end):
-                            beta[j] = 0.
 
                 else:
                     for j in range(g_start[i], g_end):
                         if fabs(XTR[j]) < tau * (2 * lambda_ - lambda_prec):
                             disabled_features[j] = 1
-                            n_active_features -= 1
-                            beta[j] = 0.
 
-        while violation > 0:
-            for n_iter in range(max_iter):
+        for n_iter in range(max_iter):
 
-                if f != 0 and n_iter % f == 0:
+            if f != 0 and n_iter % f == 0:
 
-                    # Compute dual point by dual scaling :
-                    # theta_k = residual / dual_scale
-                    dual_scale = dual_scaling(n_samples, n_features, n_groups,
-                                              & beta[0], X, & residual[0],
-                                              & XTR[0], & disabled_features[0],
-                                              & disabled_groups[0],
-                                              & size_groups[0], & g_start[0],
-                                              lambda_, lambda2, tau, & omega[0], zx)
+                # Compute dual point by dual scaling :
+                # theta_k = residual / dual_scale
+                dual_scale = dual_scaling(n_samples, n_features, n_groups,
+                                          & beta[0], X, & residual[0],
+                                          & XTR[0], & disabled_features[0],
+                                          & disabled_groups[0],
+                                          & size_groups[0], & g_start[0],
+                                          lambda_, lambda2, tau, & omega[0],
+                                          zx)
 
-                    residual_norm2 = dnrm2(& n_samples, & residual[0], & inc) ** 2
-                    norm_beta2 = dnrm2(& n_features, & beta[0], & inc) ** 2
-                    gap_t = dual_gap(n_samples, n_features, n_groups,
-                                     & size_groups[0], & g_start[0],
-                                     & residual[0], & y[0], & beta[0],
-                                     nrm2_y, & omega[0], dual_scale,
-                                     & disabled_groups[0],
-                                     & disabled_features[0],
-                                     residual_norm2, norm_beta2,
-                                     lambda_, lambda2, tau)
+                residual_norm2 = dnrm2(& n_samples, & residual[0], & inc) ** 2
+                norm_beta2 = dnrm2(& n_features, & beta[0], & inc) ** 2
+                gap_t = dual_gap(n_samples, n_features, n_groups,
+                                 & size_groups[0], & g_start[0],
+                                 & residual[0], & y[0], & beta[0],
+                                 nrm2_y, & omega[0], dual_scale,
+                                 & disabled_groups[0],
+                                 & disabled_features[0],
+                                 residual_norm2, norm_beta2,
+                                 lambda_, lambda2, tau)
 
-                    if gap_t <= tol:
-                        # print "boom bapp ---> ", near_zero(gap_t), gap_t
-                        break
+                if gap_t <= tol:
+                    # print "boom bapp ---> ", near_zero(gap_t), gap_t
+                    break
 
-                    if screen == DYNAMIC_SAFE:
-                        # center = y /lambda_
-                        # r = ||theta_k - center||
-                        if lambda_ == lambda_max:
-                            r = 0.
-                        else:
-                            r = 0.
-                            for i in range(n_samples):
-                                r += (residual[i] / dual_scale - center[i]) ** 2
-                            r = sqrt(r)
+                if screen in [GAPSAFE, GAPSAFE_SEQ]:
 
-                    if screen == DST3:
-                        # center is precomputed
-                        # r = sqrt(||theta_k - y/lambda||**2 -
-                        #          ||y/lambda_ - center||**2)
-                        if lambda_ == lambda_max:
-                            r = 0.
-                        else:
-                            r = 0.
-                            for i in range(n_samples):
-                                r += (residual[i] / dual_scale - y[i] / lambda_) ** 2
-                            r = sqrt(r - delta_DST3 * tmp_DST3)
-
-
-
-                    if screen in [GAPSAFE, GAPSAFE_SEQ, SAFE_STRONG_RULE]:
-
-                        if screen == GAPSAFE_SEQ and n_iter >= 1:
-                            pass
-                        else:
-                            # center = theta_k
-                            # r = sqrt(gap_t) / lambda_
-                            r = sqrt(near_zero(gap_t)) / lambda_
-                            for j in range(n_features):
-                                XTc[j] = (XTR[j] - lambda2 * beta[j]) / dual_scale
-
-                    if screen in [GAPSAFE, DYNAMIC_SAFE, DST3,
-                                  GAPSAFE_SEQ, SAFE_STRONG_RULE]:
-
-                        if screen == GAPSAFE_SEQ and n_iter >= 1:
-                            pass
-
-                        else:
-                            fscreen_sgl(
-                                & beta[0], & XTc[0], X, & residual[0], & XTR[0],
-                                & disabled_features[0], & disabled_groups[0],
-                                & size_groups[0], & norm2_X[0], & norm2_X_g[0],
-                                & g_start[0], n_groups, r, n_samples,
-                                & n_active_features, & n_active_groups, tau,
-                                & omega[0])
-
-                prox_sgl(n_samples, n_features, n_groups,
-                         & beta[0], & beta_old[0], X, & residual[0], & XTR[0],
-                         & disabled_features[0], & disabled_groups[0],
-                         & size_groups[0], & norm2_X_g[0],
-                         & g_start[0], lambda_, lambda2, tau, & omega[0])
-
-            if screen in [STRONG_RULE, TLFre]:
-                # check violation of KKT condition
-                violation = 0
-
-                # TODO: n_active_features += 1 in case of violation
-
-                for i in range(n_groups):
-
-                    tg = (1. - tau) * omega[i]
-                    g_end = g_start[i] + size_groups[i]
-
-                    # compute the group norm
-                    double_tmp = dnrm2(& g_end, & beta[g_start[i]], & inc)
-
-                    if disabled_groups[i] == 0:
-                        continue
-
-                    if double_tmp != 0:
-
-                        for j in range(g_start[i], g_end):
-
-                            if disabled_features[j] == 0:
-                                continue
-
-                            if beta[j] != 0:
-
-                                if fabs(XTR[j] / lambda_ -
-                                        tg * beta[j] / double_tmp -
-                                        tau * fsign(beta[j])) > 1e-12:
-                                    disabled_features[j] = 0
-                                    violation += 1
-
-                            else:
-                                if fabs(fabs(XTR[j]) - lambda_ * tau) <= 1e-12 or\
-                                   fabs(XTR[j]) <= lambda_ * tau:
-                                    pass
-
-                                else:
-                                    disabled_features[j] = 0
-                                    violation += 1
-
+                    if screen == GAPSAFE_SEQ and n_iter >= 1:
+                        pass
                     else:
+                        # center = theta_k
+                        # r = sqrt(gap_t) / lambda_
+                        r = sqrt(near_zero(gap_t)) / lambda_
+                        for j in range(n_features):
+                            XTc[j] = (XTR[j] - lambda2 * beta[j]) / dual_scale
 
-                        norm_ST_g = 0.
-                        for j in range(g_start[i], g_end):
-                            norm_ST_g += ST(XTR[j] / lambda_, tau) ** 2
+                        fscreen_sgl(
+                            & beta[0], & XTc[0], X, & residual[0], & XTR[0],
+                            & disabled_features[0], & disabled_groups[0],
+                            & size_groups[0], & norm2_X[0], & norm2_X_g[0],
+                            & g_start[0], n_groups, r, n_samples,
+                            & n_active_features, & n_active_groups, tau,
+                            & omega[0])
 
-                        if fabs(norm_ST_g - tg ** 2) <= 1e-12 or\
-                           norm_ST_g <= tg ** 2:
-                            pass
-
-                        else:
-                            disabled_groups[i] = 0
-                            violation += 1
-            else:
-                violation = 0
+            prox_sgl(n_samples, n_features, n_groups,
+                     & beta[0], & beta_old[0], X, & residual[0], & XTR[0],
+                     & disabled_features[0], & disabled_groups[0],
+                     & size_groups[0], & norm2_X_g[0],
+                     & g_start[0], lambda_, lambda2, tau, & omega[0])
 
     return (dual_scale, gap_t, n_active_groups, n_active_features, n_iter)

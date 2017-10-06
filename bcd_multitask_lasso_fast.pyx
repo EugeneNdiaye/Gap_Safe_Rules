@@ -19,8 +19,8 @@ cimport cython
 cdef:
     int inc = 1  # Default array increment for cython_blas operation
     int NO_SCREEN = 0
-    int GAPSAFE_SEQ = 2
-    int GAPSAFE = 3
+    int GAPSAFE_SEQ = 1
+    int GAPSAFE = 2
 
 
 cdef inline double fmax(double x, double y) nogil:
