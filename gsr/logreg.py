@@ -1,7 +1,8 @@
-
 import numpy as np
+
 from numpy.linalg import norm
-from cd_logreg_fast import cd_logreg
+
+from gsr.cd_logreg_fast import cd_logreg
 
 NO_SCREENING = 0
 
@@ -163,7 +164,7 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=0,
 
         if abs(gaps[t]) > tol:
 
-            print "warning: did not converge, t = ", t,
-            print "gap = ", gaps[t], "eps = ", eps
+            print("warning: did not converge, t = %d" % t)
+            print("gap = ", gaps[t], "eps = ", eps)
 
     return betas, gaps, n_iters, n_active_features

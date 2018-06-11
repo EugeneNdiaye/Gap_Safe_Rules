@@ -56,7 +56,6 @@ times = np.zeros((len(screenings), len(tols)))
 # Bench computational time
 for itol, tol_exp in enumerate(tols):
 
-    print
     tol = 10 ** (-tol_exp)
     for iscreening, screening_type in enumerate(screenings):
 
@@ -80,7 +79,7 @@ for itol, tol_exp in enumerate(tols):
 
         toc = time.time() - tic
         times[iscreening, itol] = toc
-        print screenings_names[iscreening], "tol = ", tol, "time = ", toc
+        print(screenings_names[iscreening], "tol = ", tol, "time = ", toc)
 
 
 df = pd.DataFrame(times.T, columns=screenings_names)
@@ -113,4 +112,3 @@ The compilation proceed as follows:
 ```
 $ python setup.py build_ext --inplace
 ```
-

@@ -1,7 +1,9 @@
 # TODO: clean more + strong gap safe
 
 import numpy as np
-from cd_multinomial_fast import bcd_fast
+
+from gsr.cd_multinomial_fast import bcd_fast
+
 from sklearn.preprocessing import normalize  # TODO remove it
 
 NO_SCREEN = 0
@@ -17,7 +19,7 @@ def multinomial_path(X, y, screen=NO_SCREEN, beta_init=None, lambdas=None,
     n_samples, n_features = X.shape
     n_tasks = y.shape[1]
 
-    print "screening = ", screen, "wstr_plus = ", wstr_plus
+    print("screening = %d, wstr_plus = %s" % (screen, wstr_plus))
 
     # Fortran-contiguous array are used to avoid useless copy of the data.
     X = np.asfortranarray(X)
