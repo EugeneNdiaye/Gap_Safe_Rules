@@ -3,5 +3,6 @@
 *.cpp
 *.so
 
+gsr.egg-info/
 
 *.pyc
