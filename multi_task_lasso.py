@@ -10,23 +10,14 @@ import numpy as np
 from bcd_multitask_lasso_fast import bcd_fast
 
 NO_SCREENING = 0
-
-DGST3 = 1
-
-GAPSAFE_SEQ = 2
-GAPSAFE = 3
-
-GAPSAFE_SEQ_pp = 4
-GAPSAFE_pp = 5
-
-STRONG_RULE = 10
-
-STRONG_GAP_SAFE = 666
+GAPSAFE_SEQ = 1
+GAPSAFE_DYN = 2
 
 
-def multitask_lasso_path(X, y, screen=NO_SCREENING, beta_init=None,
+def multitask_lasso_path(X, y, screen=GAPSAFE_DYN, beta_init=None,
                          lambdas=None, max_iter=100, f=10, eps=1e-4,
-                         j_star=0, wstr_plus=False):
+                         gap_active_warm_start=False,
+                         strong_active_warm_start=False):
     """Compute multitask Lasso path with block coordinate descent
 
     The multitask Lasso optimization solves:
@@ -53,26 +44,11 @@ def multitask_lasso_path(X, y, screen=NO_SCREENING, beta_init=None,
 
         NO_SCREENING = 0 : Standard method
 
-        STATIC_SAFE = 1 : Use static safe screening rule
-            cf. El Ghaoui, L., Viallon, V., and Rabbani, T.
-            "Safe feature elimination in sparse supervised learning".
-            J. Pacific Optim., 2012.
-
-        DST3 = 3 : Adaptation of the DST3 safe screening rules
-            cf.  Xiang, Z. J., Xu, H., and Ramadge, P. J.,
-            "Learning sparse representations of high dimensional data on large
-            scale dictionaries". NIPS 2011
-
-            cf. Bonnefoy, A., Emiya, V., Ralaivola, L., and Gribonval, R.
-            "Dynamic Screening: Accelerating First-Order Al-
-            gorithms for the Lasso and Group-Lasso".
-            IEEE Trans. Signal Process., 2015.
-
-        GAPSAFE_SEQ = 4 : Proposed safe screening rule using duality gap
+        GAPSAFE_SEQ = 1 : Proposed safe screening rule using duality gap
                                  in a sequential way.
 
-        GAPSAFE = 5 : Proposed safe screening rule using duality gap in both a
-                      sequential and dynamic way.
+        GAPSAFE_DYN = 2 : Proposed safe screening rule using duality gap
+                                 in both a sequential and dynamic way.
 
     beta_init : array, shape (n_features, n_tasks), optional
         The initial values of the coefficients.
@@ -116,8 +92,13 @@ def multitask_lasso_path(X, y, screen=NO_SCREENING, beta_init=None,
     X = np.asfortranarray(X)
     y = np.asfortranarray(y)
 
+    active_warm_start = strong_active_warm_start or gap_active_warm_start
+    run_active_warm_start = True
+
     norm2_X = np.sum(X ** 2, axis=0)
-    tol = eps * np.linalg.norm(y) ** 2
+    nrm2_y = np.linalg.norm(y) ** 2
+    tol = eps * nrm2_y
+    norm_res2 = nrm2_y
 
     if beta_init is None:
         beta_init = np.zeros((n_features, n_tasks), order='C')
@@ -135,73 +116,77 @@ def multitask_lasso_path(X, y, screen=NO_SCREENING, beta_init=None,
 
     XTR = np.asarray(np.dot(X.T, residual), order='C')
     norm_row_XTR = np.asfortranarray(np.linalg.norm(XTR, axis=1))
-
-    if screen == DGST3:
-
-        # print "j_star = ", j_star
-        n_DGST3 = [X[:, j_star] * np.dot(X[:, j_star].T, y[:, k]) / lambdas[0]
-                   for k in range(n_tasks)]
-        n_DGST3 = np.array(n_DGST3).T
-        norm2_n_DGST3 = np.linalg.norm(n_DGST3, ord='fro') ** 2
-        nTy_DGST3 = [np.dot(n_DGST3[:, k], y[:, k]) for k in range(n_tasks)]
-        n_DGST3 = np.asfortranarray(n_DGST3)
-        nTy_DGST3 = np.asfortranarray(nTy_DGST3)
-
-    else:
-        n_DGST3 = np.empty((1, 1), order='F')
-        norm2_n_DGST3 = 1.
-        nTy_DGST3 = np.empty(1, order='F')
+    beta_old_g = np.zeros(n_tasks, order='F')
+    gradient_step = np.zeros(n_tasks, order='F')
 
     for t in range(n_lambdas):
 
-        if t == 0:
-            lambda_prec = lambdas[0]
-        else:
-            lambda_prec = lambdas[t - 1]
+        if active_warm_start and t != 0:
 
-        if screen == STRONG_GAP_SAFE:
+            if strong_active_warm_start:
+                disabled_features = (norm_row_XTR < 2. * lambdas[t] - lambdas[t - 1]).astype(np.intc)
 
-            # TODO: cythonize this part
-            # reset the active set
-            disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
+            if gap_active_warm_start:
+                run_active_warm_start = n_active_features[t] < n_features
 
-            # Compute the strong active set
-            mask = np.where(norm_row_XTR < 2 * lambdas[t] - lambda_prec)[0]
-            beta_init[mask, :] = 0.
-            disabled_features[mask] = 1
+            if run_active_warm_start:
 
-            model = bcd_fast(X, y, beta_init, residual, XTR, norm_row_XTR,
-                             n_DGST3, norm2_n_DGST3, nTy_DGST3,
-                             n_samples, n_features, n_tasks,
-                             norm2_X, lambdas[t], lambdas[0], lambda_prec,
-                             dual_scale, max_iter, f, tol, screen,
-                             disabled_features, wstr_plus=1)
+                model = bcd_fast(X, y, beta_init, residual, XTR, norm_row_XTR,
+                                 n_samples, n_features, n_tasks, norm2_X,
+                                 lambdas[t], dual_scale, norm_res2, max_iter,
+                                 f, tol, screen, disabled_features, beta_old_g,
+                                 gradient_step, wstr_plus=1)
+                norm_res2 = model[-1]
 
         model = bcd_fast(X, y, beta_init, residual, XTR, norm_row_XTR,
-                         n_DGST3, norm2_n_DGST3, nTy_DGST3,
-                         n_samples, n_features, n_tasks,
-                         norm2_X, lambdas[t], lambdas[0], lambda_prec,
-                         dual_scale, max_iter,
-                         f, tol, screen, disabled_features, wstr_plus=0)
+                         n_samples, n_features, n_tasks, norm2_X, lambdas[t],
+                         dual_scale, norm_res2, max_iter, f, tol, screen,
+                         disabled_features, beta_old_g, gradient_step,
+                         wstr_plus=0)
 
-        dual_gaps[t], dual_scale, n_iters[t], n_active_features[t] = model
+        dual_gaps[t], dual_scale, n_iters[t], n_active_features[t],\
+            norm_res2 = model
         coefs[:, :, t] = beta_init.copy()
-
-        if t == 0 and screen != NO_SCREENING:
-            n_active_features[0] = 0
-
-        if wstr_plus and t < n_lambdas - 1 and t != 0 and \
-           n_active_features[t] < n_features:
-
-            bcd_fast(X, y, beta_init, residual, XTR, norm_row_XTR,
-                     n_DGST3, norm2_n_DGST3, nTy_DGST3,
-                     n_samples, n_features, n_tasks,
-                     norm2_X, lambdas[t + 1], lambdas[0], lambda_prec,
-                     dual_scale, max_iter,
-                     f, tol, screen, disabled_features, wstr_plus=1)
 
         if abs(dual_gaps[t]) > tol:
             print("Warning did not converge ... t = %s gap = %s tol = %s n_iter = %s" %
                   (t, dual_gaps[t], tol, n_iters[t]))
 
     return (coefs, dual_gaps, n_iters, n_active_features)
+
+
+if __name__ == '__main__':
+
+    from sklearn.datasets import make_regression
+    from sklearn.linear_model import lasso_path
+    import time
+
+    n_samples, n_features, n_tasks = (200, 500, 75)
+    # generate dataset
+    X, y = make_regression(n_samples=n_samples, n_features=n_features,
+                           n_targets=n_tasks, random_state=42)
+
+    # tmp_y = y.copy()
+    # y = y[:, None]
+    # parameters
+    lambda_max = np.max(np.sqrt(np.sum(np.dot(X.T, y) ** 2, axis=1)))
+    n_lambdas = 100
+    lambda_ratio = 1e-3 ** (1. / (n_lambdas - 1))
+    lambdas = np.array([lambda_max * (lambda_ratio ** i)
+                        for i in range(0, n_lambdas)])
+
+    # lambdas = np.array([lambda_max / 20.])
+    tol = 1e-12
+
+    tic = time.time()
+    beta, gap, n_iters, n_active_features = \
+        multitask_lasso_path(X, y, lambdas=lambdas, eps=tol, f=10,
+                             max_iter=5000, screen=GAPSAFE_DYN,
+                             strong_active_warm_start=True)
+    print "our time = ", time.time() - tic, np.max(gap)
+
+    # tic = time.time()
+    # alphas, coefs, gaps = lasso_path(X, y, alphas=lambdas / n_samples,
+    #                                  fit_intercept=False, normalize=False,
+    #                                  tol=tol, max_iter=5000)
+    # print "our sk = ", time.time() - tic, np.max(gaps)
