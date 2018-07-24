@@ -2,8 +2,8 @@ from __future__ import print_function
 
 import numpy as np
 import scipy as sp
-from numpy.linalg import norm
-from cd_lasso_fast import cd_lasso, matrix_column_norm
+
+from gsr.cd_lasso_fast import cd_lasso, matrix_column_norm
 
 NO_SCREENING = 0
 GAPSAFE_SEQ = 1
@@ -248,4 +248,3 @@ if __name__ == '__main__':
     print("norm diff = ", np.linalg.norm(beta.T - d_gap, ord=np.inf))
 
     # cProfile.run('main()', sort='time')
-

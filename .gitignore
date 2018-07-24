@@ -1,0 +1,8 @@
+# Cython
+*.o
+*.cpp
+*.so
+
+gsr.egg-info/
+
+*.pyc

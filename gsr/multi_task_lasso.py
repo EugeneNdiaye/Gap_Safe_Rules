@@ -7,7 +7,8 @@
 # firstname.lastname@telecom-paristech.fr
 
 import numpy as np
-from bcd_multitask_lasso_fast import bcd_fast
+
+from gsr.bcd_multitask_lasso_fast import bcd_fast
 
 NO_SCREENING = 0
 GAPSAFE_SEQ = 1
