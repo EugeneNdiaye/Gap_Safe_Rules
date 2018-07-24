@@ -1,18 +1,27 @@
-# Author: Eugene Ndiaye (The padawan :-D)
-#         Olivier Fercoq
-#         Alexandre Gramfort
-#         Joseph Salmon
-# GAP Safe Screening Rules for Sparse-Group Lasso.
-# firstname.lastname@telecom-paristech.fr
-
-from distutils.core import setup
-# from distulils.extension import Extension
-from Cython.Build import cythonize
 import numpy as np
+from distutils.core import setup
+from Cython.Build import cythonize
 
-setup(
-    ext_modules=cythonize("*.pyx"),
-    # extra_compile_args=['-fopenmp'],
-    # extra_link_args=['-fopenmp'],
-    include_dirs=[np.get_include()],
-)
+DISTNAME = 'gsroptim'
+DESCRIPTION = 'Fast coordinate descent solver with Gap Safe screening Rules'
+LONG_DESCRIPTION = open('README.md').read()
+MAINTAINER = 'Eugene Ndiaye'
+MAINTAINER_EMAIL = 'ndiayeeugene@gmail.com'
+LICENSE = 'BSD (3-clause)'
+DOWNLOAD_URL = 'https://github.com/EugeneNdiaye/Gap_Safe_Rules.git'
+URL = 'https://github.com/EugeneNdiaye/Gap_Safe_Rules.git'
+VERSION = None
+
+setup(name='gsroptim',
+      version=VERSION,
+      description=DESCRIPTION,
+      long_description=LONG_DESCRIPTION,
+      license=LICENSE,
+      maintainer=MAINTAINER,
+      maintainer_email=MAINTAINER_EMAIL,
+      url=URL,
+      download_url=DOWNLOAD_URL,
+      packages=['gsroptim'],
+      ext_modules=cythonize("gsroptim/*.pyx"),
+      include_dirs=[np.get_include()]
+      )
