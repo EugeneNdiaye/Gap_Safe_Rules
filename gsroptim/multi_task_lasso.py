@@ -14,10 +14,10 @@ GAPSAFE_SEQ = 1
 GAPSAFE_DYN = 2
 
 
-def multitask_lasso_path(X, y, screen=GAPSAFE_DYN, beta_init=None,
-                         lambdas=None, max_iter=100, f=10, eps=1e-4,
+def multitask_lasso_path(X, y, lambdas, beta_init=None, screen=GAPSAFE_DYN,
+                         eps=1e-4, max_iter=100, f=10,
                          gap_active_warm_start=False,
-                         strong_active_warm_start=False):
+                         strong_active_warm_start=True):
     """Compute multitask Lasso path with block coordinate descent
 
     The multitask Lasso optimization solves:
@@ -64,22 +64,22 @@ def multitask_lasso_path(X, y, screen=GAPSAFE_DYN, beta_init=None,
 
     Returns
     -------
-    coefs : array, shape (n_features, n_alphas)
+    betas : array, shape (n_features, n_lambdas)
         Coefficients along the path.
 
-    dual_gaps : array, shape (n_alphas,)
-        The dual gaps at the end of the optimization for each alpha.
+    dual_gaps : array, shape (n_lambdas,)
+        The dual gaps at the end of the optimization for each lambda.
 
     lambdas : ndarray
         List of lambdas where to compute the models.
 
-    screening_sizes_groups : array, shape (n_alphas,)
+    screening_sizes_groups : array, shape (n_lambdas,)
         Number of active groups.
 
-    screening_sizes_features : array, shape (n_alphas,)
+    screening_sizes_features : array, shape (n_lambdas,)
         Number of active variables.
 
-    n_iters : array-like, shape (n_alphas,)
+    n_iters : array-like, shape (n_lambdas,)
         The number of iterations taken by the block coordinate descent
         optimizer to reach the specified accuracy for each lambda.
 
@@ -105,7 +105,7 @@ def multitask_lasso_path(X, y, screen=GAPSAFE_DYN, beta_init=None,
     else:
         beta_init = np.asarray(beta_init, order='C')
 
-    coefs = np.zeros((n_features, n_tasks, n_lambdas), order='C')
+    betas = np.zeros((n_features, n_tasks, n_lambdas), order='C')
     residual = np.asfortranarray(y - np.dot(X, beta_init))
     disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
     dual_scale = lambdas[0]
@@ -124,7 +124,8 @@ def multitask_lasso_path(X, y, screen=GAPSAFE_DYN, beta_init=None,
         if active_warm_start and t != 0:
 
             if strong_active_warm_start:
-                disabled_features = (norm_row_XTR < 2. * lambdas[t] - lambdas[t - 1]).astype(np.intc)
+                disabled_features = (norm_row_XTR < 2. * lambdas[t] -
+                                     lambdas[t - 1]).astype(np.intc)
 
             if gap_active_warm_start:
                 run_active_warm_start = n_active_features[t] < n_features
@@ -146,47 +147,11 @@ def multitask_lasso_path(X, y, screen=GAPSAFE_DYN, beta_init=None,
 
         dual_gaps[t], dual_scale, n_iters[t], n_active_features[t],\
             norm_res2 = model
-        coefs[:, :, t] = beta_init.copy()
+        betas[:, :, t] = beta_init.copy()
 
         if abs(dual_gaps[t]) > tol:
-            print("Warning did not converge ... t = %s gap = %s tol = %s n_iter = %s" %
+            print("Warning did not converge : \n" +
+                  " t = %s gap = %s tol = %s n_iter = %s" %
                   (t, dual_gaps[t], tol, n_iters[t]))
 
-    return (coefs, dual_gaps, n_iters, n_active_features)
-
-
-if __name__ == '__main__':
-
-    from sklearn.datasets import make_regression
-    from sklearn.linear_model import lasso_path
-    import time
-
-    n_samples, n_features, n_tasks = (200, 500, 75)
-    # generate dataset
-    X, y = make_regression(n_samples=n_samples, n_features=n_features,
-                           n_targets=n_tasks, random_state=42)
-
-    # tmp_y = y.copy()
-    # y = y[:, None]
-    # parameters
-    lambda_max = np.max(np.sqrt(np.sum(np.dot(X.T, y) ** 2, axis=1)))
-    n_lambdas = 100
-    lambda_ratio = 1e-3 ** (1. / (n_lambdas - 1))
-    lambdas = np.array([lambda_max * (lambda_ratio ** i)
-                        for i in range(0, n_lambdas)])
-
-    # lambdas = np.array([lambda_max / 20.])
-    tol = 1e-12
-
-    tic = time.time()
-    beta, gap, n_iters, n_active_features = \
-        multitask_lasso_path(X, y, lambdas=lambdas, eps=tol, f=10,
-                             max_iter=5000, screen=GAPSAFE_DYN,
-                             strong_active_warm_start=True)
-    print("our time = ", time.time() - tic, np.max(gap))
-
-    # tic = time.time()
-    # alphas, coefs, gaps = lasso_path(X, y, alphas=lambdas / n_samples,
-    #                                  fit_intercept=False, normalize=False,
-    #                                  tol=tol, max_iter=5000)
-    # print "our sk = ", time.time() - tic, np.max(gaps)
+    return betas, dual_gaps, n_iters, n_active_features

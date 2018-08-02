@@ -131,7 +131,6 @@ def precompute_norm(X, y, size_groups, g_start):
     return norm_X, np.array(norm_X_g), nrm2_y
 
 
-
 def build_lambdas(X, y, omega, size_groups, g_start, n_lambdas=100, delta=3,
                   tau=0.5):
     """
@@ -149,7 +148,10 @@ def build_lambdas(X, y, omega, size_groups, g_start, n_lambdas=100, delta=3,
     imax = np.argmax(nrm)
     lambda_max = nrm[imax]
 
-    lambdas = lambda_max * \
-        10 ** (-delta * np.arange(n_lambdas) / (n_lambdas - 1.))
+    if n_lambdas == 1:
+        lambdas = np.array(lambda_max)
+    else:
+        lambdas = lambda_max * \
+            10 ** (-delta * np.arange(n_lambdas) / (n_lambdas - 1.))
 
     return lambdas, imax

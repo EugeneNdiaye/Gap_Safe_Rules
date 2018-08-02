@@ -10,9 +10,9 @@ GAPSAFE_SEQ = 1
 GAPSAFE = 2
 
 
-def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=GAPSAFE,
-               gap_active_warm_start=False, strong_active_warm_start=False,
-               fit_intercept=False):
+def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
+               eps=1e-4, max_iter=3000, screening=GAPSAFE, f=10,
+               gap_active_warm_start=False, strong_active_warm_start=True):
     """Compute Lasso path with coordinate descent
 
     The Lasso optimization solves:
@@ -28,7 +28,19 @@ def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=GAPSAFE,
     y : ndarray, shape = (n_samples,)
         Target values
 
-    screen : integer
+    lambdas : ndarray
+        List of lambdas where to compute the models.
+
+    beta_init : array, shape (n_features, ), optional
+        The initial values of the coefficients.
+
+    eps : float, optional
+        Prescribed accuracy on the duality gap.
+
+    max_iter : float, optional
+        Number of epochs of the coordinate descent.
+
+    screening : integer
         Screening rule to be used: it must be choosen in the following list
 
         NO_SCREENING = 0: Standard method
@@ -39,34 +51,26 @@ def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=GAPSAFE,
         GAPSAFE = 2: Proposed safe screening rule using duality gap in both a
                       sequential and dynamic way.: Gap Safe (Seq. + Dyn)
 
-    beta_init : array, shape (n_features, ), optional
-        The initial values of the coefficients.
-
-    lambdas : ndarray
-        List of lambdas where to compute the models.
-
     f : float, optional
-        The screening rule will be execute at each f pass on the data
-
-    eps : float, optional
-        Prescribed accuracy on the duality gap.
+        The duality gap will be evaluated and screening rule executed at each f
+        epochs.
 
     Returns
     -------
-    coefs : array, shape (n_features, n_alphas)
-        Coefficients along the path.
+    intercepts : array, shape (n_lambdas)
+        Fitted intercepts along the path.
 
-    dual_gaps : array, shape (n_alphas,)
-        The dual gaps at the end of the optimization for each alpha.
+    betas : array, shape (n_features, n_lambdas)
+        Coefficients beta along the path.
 
-    lambdas : ndarray
-        List of lambdas where to compute the models.
+    dual_gaps : array, shape (n_lambdas,)
+        The dual gaps at the end of the optimization for each lambda.
 
-    n_iters : array-like, shape (n_alphas,)
+    n_iters : array-like, shape (n_lambdas,)
         The number of iterations taken by the block coordinate descent
         optimizer to reach the specified accuracy for each lambda.
 
-    n_active_features : array, shape (n_alphas,)
+    n_active_features : array, shape (n_lambdas,)
         Number of active variables.
 
     """
@@ -77,8 +81,13 @@ def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=GAPSAFE,
     n_lambdas = len(lambdas)
 
     n_samples, n_features = X.shape
-    betas = np.zeros((n_lambdas, n_features))
-    beta_init = np.zeros(n_features, dtype=float, order='F')
+    betas = np.zeros((n_features, n_lambdas))
+
+    if beta_init is None:
+        beta_init = np.zeros(n_features, dtype=float, order='F')
+    else:
+        beta_init = np.asarray(beta_init, order='F')
+
     intercepts = np.zeros(n_lambdas)
     disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
     gaps = np.ones(n_lambdas)
@@ -135,7 +144,8 @@ def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=GAPSAFE,
         if active_warm_start and t != 0:
 
             if strong_active_warm_start:
-                disabled_features = (np.abs(XTR) < 2. * lambdas[t] - lambdas[t - 1]).astype(np.intc)
+                disabled_features = (np.abs(XTR) < 2. * lambdas[t] -
+                                     lambdas[t - 1]).astype(np.intc)
 
             if gap_active_warm_start:
                 run_active_warm_start = n_active_features[t] < n_features
@@ -155,7 +165,7 @@ def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=GAPSAFE,
                      lambdas[t], sum_residual, tol, max_iter, f, screening,
                      wstr_plus=0, sparse=sparse, center=center)
 
-        betas[t, :] = beta_init.copy()
+        betas[:, t] = beta_init.copy()
         if fit_intercept:
             intercepts[t] = y_mean - X_mean.dot(beta_init)
 
@@ -168,84 +178,3 @@ def lasso_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, screening=GAPSAFE,
             print("gap = ", gaps[t], "eps = ", eps)
 
     return intercepts, betas, gaps, n_iters, n_active_features
-
-
-if __name__ == '__main__':
-
-    import time
-    from sklearn.datasets.mldata import fetch_mldata
-    # from scipy.sparse import csc_matrix
-    # import cProfile
-
-    # def main():
-
-    # n_samples = 100
-    # n_features = 500
-
-    # X = np.random.randn(n_samples, n_features)
-    # X[np.random.uniform(size=(n_samples, n_features)) < 0.9] = 0
-    # y = np.random.uniform(size=n_samples)
-
-    dataset = "leukemia"
-    data = fetch_mldata(dataset)
-    X = data.data
-    y = data.target
-    X = X.astype(float)
-    y = y.astype(float)
-
-    # dataset = "finance"
-    # X = sp.sparse.load_npz('finance_filtered.npz')
-    # y = np.load("finance_target.npy")
-
-    n_samples, n_features = X.shape
-    # X = csc_matrix(X)
-
-    # parameters
-    alpha_max = np.linalg.norm(X.T.dot(y), ord=np.inf)
-    n_alphas = 100
-    eps = 1e-3
-    alpha_ratio = eps ** (1. / (n_alphas - 1))
-    alphas = np.array([alpha_max * (alpha_ratio ** i)
-                       for i in range(0, n_alphas)])
-    max_iter = 10000
-    tol = 1e-8
-    print("tolerance = ", tol * np.linalg.norm(y) ** 2)
-
-    # tic = time.time()
-    # intercept, beta, gap, n_iters, _ =\
-    #     lasso_path(X, y.copy(), alphas, eps=tol,
-    #                max_iter=max_iter, screening=NO_SCREENING,)
-    # print "no Screening time = ", time.time() - tic
-
-    # tic = time.time()
-    # intercept, beta, gap, n_iters, _ =\
-    #     lasso_path(X, y.copy(), alphas, eps=tol,
-    #                max_iter=max_iter, screening=GAPSAFE)
-    # print "gap safe time = ", time.time() - tic
-
-    # tic = time.time()
-    # intercept, beta, gap, n_iters, _ =\
-    #     lasso_path(X, y.copy(), alphas, eps=tol, max_iter=max_iter,
-    #                screening=GAPSAFE,
-    #                gap_active_warm_start=True)
-    # print "gap active wstr time = ", time.time() - tic
-
-    tic = time.time()
-    intercept, beta, gap, n_iters, _ =\
-        lasso_path(X, y.copy(), alphas, eps=tol, max_iter=max_iter,
-                   screening=NO_SCREENING,
-                   strong_active_warm_start=False, fit_intercept=False)
-    print("our time = ", time.time() - tic, np.max(gap),
-          "max_gap = ", np.max(gap))
-
-    from sklearn.linear_model import lasso_path as sk_lasso_path
-    tic = time.time()
-    _, coef, d_gap = sk_lasso_path(X, y, alphas=alphas / n_samples, tol=tol,
-                                   max_iter=max_iter, fit_intercept=False)
-    print("time scikit = ", time.time() - tic,
-          "max_gap = ", np.max(d_gap))
-
-    print("norm diff = ", np.linalg.norm(beta.T - d_gap, ord=np.inf))
-
-    # cProfile.run('main()', sort='time')
-

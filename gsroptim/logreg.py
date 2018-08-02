@@ -15,9 +15,9 @@ GAPSAFE_SEQ = 1
 GAPSAFE = 2
 
 
-def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, beta_init=None,
+def logreg_path(X, y, lambdas, beta_init=None, eps=1e-4, max_iter=3000, f=10,
                 screening=GAPSAFE, gap_active_warm_start=False,
-                strong_active_warm_start=False):
+                strong_active_warm_start=True):
     """Compute l1-regularized logistic regression path with coordinate descent
 
     We solve:
@@ -32,9 +32,15 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, beta_init=None,
         unnecessary memory duplication.
 
     y : ndarray, shape = (n_samples,)
-        Target values
+        Target values : the label must be 0 and 1.
 
-    screen : integer
+    lambdas : ndarray
+        List of lambdas where to compute the models.
+
+    beta_init : array, shape (n_features, ), optional
+        The initial values of the coefficients.
+
+    screening : integer
         Screening rule to be used: it must be choosen in the following list
 
         NO_SCREENING = 0: Standard method
@@ -45,20 +51,14 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, beta_init=None,
         GAPSAFE = 2: Proposed safe screening rule using duality gap in both a
                       sequential and dynamic way.: Gap Safe (Seq. + Dyn)
 
-        GAPSAFE_SEQ_pp = 3: Proposed safe screening rule using duality gap
-                             in a sequential way along with active warm start
-                             strategies: Gap Safe (Seq. + active warm start)
+    strong_active_warm_start : Proposed safe screening rule using duality gap
+                             in a sequential way along with strong warm start
+                             strategies: Gap Safe (Seq. + strong warm start)
 
-        GAPSAFE_pp = 4: Proposed safe screening rule using duality gap
+    gap_active_warm_start : Proposed safe screening rule using duality gap
                          in both a sequential and dynamic way along with
                          active warm start strategies:
                          Gap Safe (Seq. + Dyn + active warm start).
-
-    beta_init : array, shape (n_features, ), optional
-        The initial values of the coefficients.
-
-    lambdas : ndarray
-        List of lambdas where to compute the models.
 
     f : float, optional
         The screening rule will be execute at each f pass on the data
@@ -68,20 +68,20 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, beta_init=None,
 
     Returns
     -------
-    coefs : array, shape (n_features, n_alphas)
+    betas : array, shape (n_features, n_lambdas)
         Coefficients along the path.
 
-    dual_gaps : array, shape (n_alphas,)
-        The dual gaps at the end of the optimization for each alpha.
+    dual_gaps : array, shape (n_lambdas,)
+        The dual gaps at the end of the optimization for each lambda.
 
     lambdas : ndarray
         List of lambdas where to compute the models.
 
-    n_iters : array-like, shape (n_alphas,)
+    n_iters : array-like, shape (n_lambdas,)
         The number of iterations taken by the block coordinate descent
         optimizer to reach the specified accuracy for each lambda.
 
-    n_actives_features : array, shape (n_alphas,)
+    n_actives_features : array, shape (n_lambdas,)
         Number of active variables.
 
     """
@@ -99,7 +99,7 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, beta_init=None,
     active_warm_start = strong_active_warm_start or gap_active_warm_start
     run_active_warm_start = True
 
-    betas = np.zeros((n_lambdas, n_features))
+    betas = np.zeros((n_features, n_lambdas))
     disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
     gaps = np.ones(n_lambdas)
     n_iters = np.zeros(n_lambdas)
@@ -172,7 +172,7 @@ def logreg_path(X, y, lambdas, eps=1e-4, max_iter=3000, f=10, beta_init=None,
                       norm_X2, p_obj, norm1_beta, lambdas[t], tol, dual_scale,
                       max_iter, f, screening, wstr_plus=0, sparse=sparse)
 
-        betas[t, :] = beta_init.copy()
+        betas[:, t] = beta_init.copy()
 
         if abs(gaps[t]) > tol:
 

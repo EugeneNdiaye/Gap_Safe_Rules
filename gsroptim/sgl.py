@@ -1,4 +1,3 @@
-from __future__ import print_function
 # Author: Eugene Ndiaye
 #         Olivier Fercoq
 #         Alexandre Gramfort
@@ -16,17 +15,17 @@ GAPSAFE_SEQ = 1
 GAPSAFE = 2
 
 
-def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
-             tau=0.5, lambda2=0, max_iter=30000, f=10, eps=1e-4,
-             gap_active_warm_start=False, strong_active_warm_start=False):
-
+def sgl_path(X, y, size_groups, omega, lambdas=None, tau=0.5, lambda2=0,
+             beta_init=None, screen=GAPSAFE, max_iter=30000, f=10, eps=1e-4,
+             gap_active_warm_start=False, strong_active_warm_start=True):
     """Compute Sparse-Group-Lasso path with block coordinate descent
 
-    The Sparse-Group-Lasso optimization solves:
+    The Sparse-Group Lasso formulation reads:
 
     f(beta) + lambda_1 Omega(beta) + 0.5 * lambda_2 norm(beta,2)^2
     where f(beta) = 0.5 * norm(y - X beta,2)^2 and
     Omega(beta) = tau norm(beta,1) + (1 - tau) * sum_g omega_g * norm{beta_g,2}
+    where g belongs to a group structure.
 
     Parameters
     ----------
@@ -73,24 +72,21 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
 
     Returns
     -------
-    coefs : array, shape (n_features, n_alphas)
+    betas : array, shape (n_features, n_lambdas)
         Coefficients along the path.
 
-    dual_gaps : array, shape (n_alphas,)
-        The dual gaps at the end of the optimization for each alpha.
+    dual_gaps : array, shape (n_lambdas,)
+        The dual gaps at the end of the optimization for each lambda.
 
-    lambdas : ndarray
-        List of lambdas where to compute the models.
-
-    screening_sizes_groups : array, shape (n_alphas,)
-        Number of active groups.
-
-    screening_sizes_features : array, shape (n_alphas,)
-        Number of active variables.
-
-    n_iters : array-like, shape (n_alphas,)
+    n_iters : array-like, shape (n_lambdas,)
         The number of iterations taken by the block coordinate descent
         optimizer to reach the specified accuracy for each lambda.
+
+    screening_sizes_groups : array, shape (n_lambdas,)
+        Number of active groups.
+
+    screening_sizes_features : array, shape (n_lambdas,)
+        Number of active variables.
 
     """
 
@@ -122,7 +118,7 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
     else:
         beta_init = np.asfortranarray(beta_init)
 
-    coefs = np.zeros((n_features, n_lambdas), order='F')
+    betas = np.zeros((n_features, n_lambdas), order='F')
     residual = np.asfortranarray(y - np.dot(X, beta_init))
     XTR = np.asfortranarray(np.dot(X.T, residual))
     dual_scale = lambda_max  # good iif beta_init = 0
@@ -171,35 +167,12 @@ def sgl_path(X, y, size_groups, omega, screen, beta_init=None, lambdas=None,
         dual_scale, dual_gaps[t], n_active_groups, n_active_features, \
             n_iters[t] = model
 
-        coefs[:, t] = beta_init.copy()
+        betas[:, t] = beta_init.copy()
 
         if abs(dual_gaps[t]) > tol:
-            print("Warning did not converge ... t = %s gap = %s eps = %s n_iter = %s" %
+            print("Warning did not converge : \n" +
+                  "t = %s gap = %s eps = %s n_iter = %s" %
                   (t, dual_gaps[t], eps, n_iters[t]))
 
-    return (coefs, dual_gaps, lambdas, screening_sizes_groups,
-            screening_sizes_features, n_iters)
-
-
-if __name__ == '__main__':
-
-    from sgl_tools import generate_data
-    import time
-
-    n_samples = 50
-    n_features = 800
-    size_group = 40  # all groups have size = size_group
-    delta = 3
-    tau = .34
-
-    n_groups = n_features / size_group
-    size_groups = size_group * np.ones(n_groups, order='F', dtype=np.intc)
-    omega = np.ones(n_groups)
-    groups = np.arange(n_features) // size_group
-    group_labels = [np.where(groups == i)[0] for i in np.unique(groups)]
-    X, y = generate_data(n_samples, n_features, size_groups, rho=0.4)
-
-    tic = time.time()
-    gaps = sgl_path(X, y, size_groups, omega, screen=2, tau=tau, max_iter=1e5,
-                    eps=1e-14, strong_active_warm_start=True)[1]
-    print("time = ", time.time() - tic)
+    return (betas, dual_gaps, n_iters, screening_sizes_groups,
+            screening_sizes_features)
