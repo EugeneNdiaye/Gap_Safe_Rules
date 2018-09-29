@@ -63,21 +63,20 @@ for itol, tol_exp in enumerate(tols):
 
         if screening_type == GAPSAFE_SEQ_pp:
             screening_type = GAPSAFE_SEQ
-            wstr_plus = True
+            gap_active_warm_start = True
 
         elif screening_type == GAPSAFE_pp:
             screening_type = GAPSAFE
-            wstr_plus = True
+            gap_active_warm_start = True
 
         else:
-            wstr_plus = False
+            gap_active_warm_start = False
 
         tic = time.time()
 
-        betas, gaps, n_iters, _ = logreg_path(X, y, lambdas=lambdas, eps=tol,
-                                              screening=screening_type,
-                                              max_iter=int(1e5),
-                                              warm_start_plus=wstr_plus)
+        betas, gaps, n_iters, _ = logreg_path(
+            X, y, lambdas=lambdas, eps=tol, screening=screening_type,
+            max_iter=int(1e5), gap_active_warm_start=gap_active_warm_start)
 
         toc = time.time() - tic
         times[iscreening, itol] = toc
