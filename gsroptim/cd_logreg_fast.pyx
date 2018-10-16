@@ -116,9 +116,9 @@ cdef void update_residual(int n_samples, double[::1] y, double * X_j,
         for i_ptr in range(startptr, endptr):
             i = X_indices[i_ptr]
             Xbeta[i] += X_data[i_ptr] * beta_diff
-            yTXbeta[0] += y[i] * Xbeta[i]
 
         for i in range(n_samples):
+            yTXbeta[0] += y[i] * Xbeta[i]
             exp_Xbeta_i = exp(Xbeta[i])
             residual[i] = y[i] - exp_Xbeta_i / (1. + exp_Xbeta_i)
             # update p_obj
@@ -277,7 +277,7 @@ def cd_logreg(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
                 dual_scale = fmax(lambda_, double_tmp)
                 d_obj = dual_log(& y[0], & residual[0], dual_scale, lambda_, n_samples)
                 gap_t = p_obj - d_obj
-
+                # print("Iteration %d, p_obj = %.5f, d_obj = %.5f" % (t, p_obj, d_obj))
                 if gap_t <= tol:
                     break
 
