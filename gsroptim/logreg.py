@@ -8,7 +8,7 @@
 
 import numpy as np
 import scipy as sp
-from .save_cd_logreg_fast import cd_logreg
+from .cd_logreg_fast import cd_logreg
 
 NO_SCREENING = 0
 GAPSAFE_SEQ = 1

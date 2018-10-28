@@ -29,6 +29,10 @@ if dataset_id == 0:
 
 
 elif dataset_id == 1:
+
+    # The data can be found in https://drive.google.com/open?id=139nKKy0AkpkZntB80n-LmcuzGgC8pQHi
+    # Please unzip the file "ncep_data.tar.gz" and run process_climate.py.
+
     target = "Dakar"
     dataset = "DK_clim"
 

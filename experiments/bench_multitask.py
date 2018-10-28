@@ -34,6 +34,8 @@ elif dataset_id == 2:
     eps = 1e-3
 
 if dataset_id == 3:
+    # The data can be found in https://drive.google.com/open?id=139nKKy0AkpkZntB80n-LmcuzGgC8pQHi
+    # Please unzip the file "meg_data.tar.gz"
     dataset = 'meg_full'
     data = io.loadmat('meg_Xy_full.mat')
     X = np.array(data['X'], dtype=np.float, order='F')
