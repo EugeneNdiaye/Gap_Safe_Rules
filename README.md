@@ -3,7 +3,7 @@
 This package implements coordinate descent with Gap Safe screening rules. See our paper https://arxiv.org/abs/1611.05780 for more details.
 
 
-# Example in binary classification with sparse logistic regression
+# Examples in classification and regression
 ```python
 import numpy as np
 from sklearn.datasets import make_classification, make_regression
@@ -52,6 +52,13 @@ betas, gaps = sgl_path(X, y, size_groups, omega, lambdas)[:2]
 ```
 
 ## Installation & Requirements
+
+The compilation proceed as follows:
+
+```
+$ pip install -e .
+```
+
 This package has the following requirements:
 
 - [numpy](http://numpy.org)
@@ -60,10 +67,3 @@ This package has the following requirements:
 - [cython](http://cython.org/)
 
 We recommend to install or update anaconda (at least version 0.16.1).
-
-The compilation proceed as follows:
-
-```
-$ pip install -e .
-```
-
