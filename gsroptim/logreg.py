@@ -139,7 +139,6 @@ def logreg_path(X, y, lambdas, beta_init=None, eps=1e-4, max_iter=3000, f=10,
     XTR = np.asfortranarray(X.T.dot(residual))
     dual_scale = lambdas[0]  # True only if beta lambdas[0] ==  lambda_max
 
-    Hessian = np.zeros(n_features, dtype=float, order='F')
     Xbeta_next = np.zeros(n_samples, dtype=float, order='F')
 
     norm_X2 = np.asfortranarray(norm_X2)
@@ -160,7 +159,7 @@ def logreg_path(X, y, lambdas, beta_init=None, eps=1e-4, max_iter=3000, f=10,
                 # solve the problem restricted to the strong active set
                 _, p_obj, norm1_beta, _, _, _ =\
                     cd_logreg(X_, X_data, X_indices, X_indptr, y, beta_init,
-                              XTR, Xbeta, Hessian, Xbeta_next, residual,
+                              XTR, Xbeta, Xbeta_next, residual,
                               disabled_features, norm_X2, p_obj, norm1_beta,
                               lambdas[t], tol, dual_scale, max_iter, f,
                               screening, wstr_plus=1, sparse=sparse)
@@ -168,7 +167,7 @@ def logreg_path(X, y, lambdas, beta_init=None, eps=1e-4, max_iter=3000, f=10,
         gaps[t], p_obj, norm1_beta, dual_scale, n_iters[t],\
             n_active_features[t] = \
             cd_logreg(X_, X_data, X_indices, X_indptr, y, beta_init, XTR,
-                      Xbeta, Hessian, Xbeta_next, residual, disabled_features,
+                      Xbeta, Xbeta_next, residual, disabled_features,
                       norm_X2, p_obj, norm1_beta, lambdas[t], tol, dual_scale,
                       max_iter, f, screening, wstr_plus=0, sparse=sparse)
 

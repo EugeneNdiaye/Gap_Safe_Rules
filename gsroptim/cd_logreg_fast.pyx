@@ -115,17 +115,13 @@ cdef void update_residual(int n_samples, double[::1] y, double * X_j,
     if sparse:
         for i_ptr in range(startptr, endptr):
             i = X_indices[i_ptr]
-            Xbeta[i] += X_data[i_ptr] * beta_diff
-            yTXbeta[0] += y[i] * Xbeta[i]
+            Xbeta[i] += X_data[i_ptr] * beta_diff       
 
         for i in range(n_samples):
+            yTXbeta[0] += y[i] * Xbeta[i]
             exp_Xbeta_i = exp(Xbeta[i])
             residual[i] = y[i] - exp_Xbeta_i / (1. + exp_Xbeta_i)
-            # update p_obj
-            # log_term += log1p(exp_Xbeta_i)
-
-        for i in range(n_samples):
-            log_term += log1p(exp(Xbeta[i]))
+            log_term += log1p(exp_Xbeta_i)
 
     else:
         for i in range(n_samples):
@@ -205,7 +201,7 @@ cdef void update_residual(int n_samples, double[::1] y, double * X_j,
 
 def cd_logreg(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
               int[::1] X_indptr, double[::1] y, double[::1] beta,
-              double[::1] XTR, double[::1] Xbeta, double[::1] Hessian,
+              double[::1] XTR, double[::1] Xbeta,
               double[::1] Xbeta_next, double[::1] residual,
               int[::1] disabled_features, double[::1] norm_X2,
               double p_obj, double norm1_beta, double lambda_,
@@ -242,6 +238,7 @@ def cd_logreg(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
         double r_normX_j = 0.
         double r_screen = 1.
         double gap_t = inf
+        double hessian_j = 0.
         double * X_j_ptr = & X[0, 0]
 
     with nogil:
@@ -330,7 +327,7 @@ def cd_logreg(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
                 if disabled_features[j] == 1:
                     continue
 
-                Hessian[j] = 0.
+                hessian_j = 0.
 
                 if sparse:
                     startptr = X_indptr[j]
@@ -347,9 +344,9 @@ def cd_logreg(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
                         X_ij = X[i, j]
 
                     exp_Xbeta_i = exp(Xbeta[i])
-                    Hessian[j] += X_ij ** 2 * exp_Xbeta_i / (1. + exp_Xbeta_i) ** 2
+                    hessian_j += X_ij ** 2 * exp_Xbeta_i / (1. + exp_Xbeta_i) ** 2
 
-                L_j = fmax(Hessian[j], 1e-12)
+                L_j = fmax(hessian_j, 1e-12)
 
                 mu = lambda_ / L_j
                 beta_old_j = beta[j]
