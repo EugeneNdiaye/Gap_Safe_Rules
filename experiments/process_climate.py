@@ -39,12 +39,11 @@ def get_data(data_file):
 def download_climate():
     prefix = "ftp://ftp.cdc.noaa.gov/Datasets/ncep.reanalysis.derived/"
     print('Downloading climate data, this may take a moment')
-    # urllib.request needs python 3:
 
     files = ["air.mon.mean.nc", "rhum.mon.mean.nc", 'pr_wtr.mon.mean.nc',
              "uwnd.mon.mean.nc", "vwnd.mon.mean.nc", 'slp.mon.mean.nc',
              'pres.mon.mean.nc']
-
+    # urllib.request needs python 3:
     for fname in files:
         if not os.path.isfile(fname):
             urllib.request.urlretrieve(prefix + "surface/" + fname, fname)
@@ -97,7 +96,7 @@ def target_region(lx, Lx):
 
 
 if __name__ == "__main__":
-    lx, LX = 14, 17  # Dakar
+    lx, Lx = 14, 17  # Dakar
     # lx = 48; Lx = 2  # Paris
     download_climate()
     X, y = target_region(lx, Lx)
