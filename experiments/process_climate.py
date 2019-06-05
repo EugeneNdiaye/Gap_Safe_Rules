@@ -1,17 +1,25 @@
-from scipy.signal import detrend
+# Author : Eugene Ndiaye
+#          Mathurin Massias
+# BSD License
+
+
 import numpy as np
 import xray
+import urllib
+import os
+
+from scipy.signal import detrend
+
 
 def get_data(data_file):
-
     data = xray.open_dataset(data_file, decode_times=False)
 
-    n_times, n_lat, n_lon = data[data.data_vars.keys()[0]].shape
+    n_times, n_lat, n_lon = data[list(data.data_vars.keys())[0]].shape
     p = n_lat * n_lon
     n = n_times
     X = np.zeros((n, p))
 
-    X = np.array(data[data.data_vars.keys()[0]]).reshape(n, -1)
+    X = np.array(data[list(data.data_vars.keys())[0]]).reshape(n, -1)
 
     # remove seasonality
     period = 12
@@ -26,6 +34,20 @@ def get_data(data_file):
     X = detrend(X, axis=0, type='linear')
 
     return X
+
+
+def download_climate():
+    prefix = "ftp://ftp.cdc.noaa.gov/Datasets/ncep.reanalysis.derived/"
+    print('Downloading climate data, this may take a moment')
+    # urllib.request needs python 3:
+
+    files = ["air.mon.mean.nc", "rhum.mon.mean.nc", 'pr_wtr.mon.mean.nc',
+             "uwnd.mon.mean.nc", "vwnd.mon.mean.nc", 'slp.mon.mean.nc',
+             'pres.mon.mean.nc']
+
+    for fname in files:
+        if not os.path.isfile(fname):
+            urllib.request.urlretrieve(prefix + "surface/" + fname, fname)
 
 
 def target_region(lx, Lx):
@@ -54,7 +76,7 @@ def target_region(lx, Lx):
     target = pos_lx * 144 + pos_Lx
 
     begin = 0
-    for j in range(p - 1):
+    for j in range(p):
 
         if j == target:
             continue
@@ -74,7 +96,9 @@ def target_region(lx, Lx):
     return X, y
 
 
-lx = 14; Lx = 17 #Dakar
-# lx = 48; Lx = 2 #Paris
-X, y = target_region(lx, Lx)
+if __name__ == "__main__":
+    lx, LX = 14, 17  # Dakar
+    # lx = 48; Lx = 2  # Paris
+    download_climate()
+    X, y = target_region(lx, Lx)
 
