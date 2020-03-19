@@ -11,7 +11,7 @@ GAPSAFE = 2
 
 
 def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
-               eps=1e-4, max_iter=3000, screening=GAPSAFE, f=10,
+               eps=1e-4, max_iter=int(1e7), screening=GAPSAFE, f=10,
                gap_active_warm_start=False, strong_active_warm_start=True):
     """Compute Lasso path with coordinate descent
 
