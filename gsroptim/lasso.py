@@ -8,11 +8,11 @@ from .cd_lasso_fast import cd_lasso, matrix_column_norm
 NO_SCREENING = 0
 GAPSAFE_SEQ = 1
 GAPSAFE = 2
+DEEPS = 414
 
 
 def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
-               eps=1e-4, max_iter=3000, screening=GAPSAFE, f=10,
-               gap_active_warm_start=False, strong_active_warm_start=True):
+               eps=1e-4, max_iter=3000, screen_method="aggr. GS", f=10):
     """Compute Lasso path with coordinate descent
 
     The Lasso optimization solves:
@@ -96,7 +96,6 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
 
     sparse = sp.sparse.issparse(X)
     center = fit_intercept
-    active_warm_start = strong_active_warm_start or gap_active_warm_start
     run_active_warm_start = True
 
     if center:
@@ -138,26 +137,66 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
     XTR = np.asfortranarray(X.T.dot(residual))
 
     tol = eps * nrm2_y  # duality gap tolerance
+    relax_screening = -1
 
     for t in range(n_lambdas):
 
-        if active_warm_start and t != 0:
+        if screen_method in [None, "no screening"]:
+            screening = NO_SCREENING
 
-            if strong_active_warm_start:
-                disabled_features = (np.abs(XTR) < 2. * lambdas[t] -
-                                     lambdas[t - 1]).astype(np.intc)
+        if screen_method == "Gap Safe (GS)":
+            screening = GAPSAFE
 
-            if gap_active_warm_start:
-                run_active_warm_start = n_active_features[t] < n_features
+        # if strong_active_warm_start:
+        if screen_method == "strong GS":
+            disabled_features = (np.abs(XTR) < 2. * lambdas[t] -
+                                 lambdas[t - 1]).astype(np.intc)
+            relax_screening = GAPSAFE
+            screening = GAPSAFE
+            run_active_warm_start = True
 
-            if run_active_warm_start:
+        # if aggressive_strong_rule:
+        if screen_method == "aggr. strong GS":
+            disabled_features = (np.abs(XTR) < 2. * lambdas[t] -
+                                 lambdas[t - 1]).astype(np.intc)
+            relax_screening = DEEPS
+            screening = GAPSAFE
+            run_active_warm_start = True
 
-                _, sum_residual, _, _ = \
-                    cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean,
-                             beta_init, norm_Xcent, XTR, residual,
-                             disabled_features, nrm2_y, lambdas[t],
-                             sum_residual, tol, max_iter, f, screening,
-                             wstr_plus=1, sparse=sparse, center=center)
+        # if gap_active_warm_start:
+        if screen_method == "active warm start":
+            run_active_warm_start = n_active_features[t] < n_features
+            relax_screening = GAPSAFE
+
+        # if strong_previous_active:
+        if screen_method == "active GS":
+            disabled_features = (np.abs(XTR) < lambdas[t]).astype(np.intc)
+            relax_screening = GAPSAFE
+            screening = GAPSAFE
+            run_active_warm_start = True
+
+        # if aggressive_strong_previous_active:
+        if screen_method == "aggr. active GS":
+            disabled_features = (np.abs(XTR) < lambdas[t]).astype(np.intc)
+            relax_screening = DEEPS
+            screening = GAPSAFE
+            run_active_warm_start = True
+
+        # if aggressive_active:
+        if screen_method == "aggr. GS":
+            disabled_features = (np.abs(XTR) < lambdas[t]).astype(np.intc)
+            relax_screening = DEEPS
+            screening = GAPSAFE
+            run_active_warm_start = True
+
+        if run_active_warm_start:
+
+            gaps[t], sum_residual, n_iters[t], n_active_features[t] = \
+                cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean, beta_init,
+                         norm_Xcent, XTR, residual, disabled_features, nrm2_y,
+                         lambdas[t], sum_residual, tol, max_iter, f,
+                         relax_screening, wstr_plus=1, sparse=sparse,
+                         center=center)
 
         gaps[t], sum_residual, n_iters[t], n_active_features[t] = \
             cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean, beta_init,

@@ -20,10 +20,17 @@ cdef:
     int NO_SCREENING = 0
     int GAPSAFE_SEQ = 1
     int GAPSAFE = 2
+    int DEEPS = 414
 
 
 cdef inline double fmax(double x, double y) nogil:
     if x > y:
+        return x
+    return y
+
+
+cdef inline double fmin(double x, double y) nogil:
+    if x < y:
         return x
     return y
 
@@ -35,30 +42,6 @@ cdef inline double fsign(double f) nogil:
         return 1.0
     else:
         return -1.0
-
-
-cdef double abs_max(int n, double * a) nogil:
-    """np.max(np.abs(a))"""
-    cdef int i
-    cdef double m = fabs(a[0])
-    cdef double d
-    for i in range(1, n):
-        d = fabs(a[i])
-        if d > m:
-            m = d
-    return m
-
-
-cdef double max(int n, double * a) nogil:
-    """np.max(a)"""
-    cdef int i
-    cdef double m = a[0]
-    cdef double d
-    for i in range(1, n):
-        d = a[i]
-        if d > m:
-            m = d
-    return m
 
 
 def matrix_column_norm(int n_samples, int n_features, double[::1] X_data,
@@ -194,6 +177,7 @@ def cd_lasso(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
 
         double gap_t = 1
         double double_tmp = 0
+        double gamma = 0.0001
         double mu = 0
         double beta_old_j = 0
         double p_obj = 0.
@@ -204,6 +188,7 @@ def cd_lasso(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
         double r_screen = 1.
         double norm_residual = 1.
         double dual_scale = 0.
+        double p_obj_old = 0.
         double * X_j_ptr = & X[0, 0]
 
     with nogil:
@@ -242,6 +227,7 @@ def cd_lasso(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
                 dual_scale = fmax(lambda_, double_tmp)
                 norm_residual = dnrm2(& n_samples, & residual[0], & inc)
 
+                p_obj_old = p_obj
                 p_obj = primal_value(n_features, & beta[0], norm_residual,
                                      lambda_, & disabled_features[0])
 
@@ -253,14 +239,20 @@ def cd_lasso(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
                     break
 
                 # Dynamic Gap Safe rule
-                if screening in [GAPSAFE, GAPSAFE_SEQ]:
+                if screening in [GAPSAFE, GAPSAFE_SEQ, DEEPS]:
 
                     if screening == GAPSAFE_SEQ and n_iter >= 1:
                         pass
 
                     else:
                         # Yes with a quadratic loss we can gain a factor of sqrt{2}
-                        r_screen = sqrt(gap_t) / lambda_
+                        if screening == GAPSAFE:
+                            r_screen = sqrt(gap_t) / lambda_
+
+                        if screening == DEEPS:
+
+                            double_tmp = (1 - gamma) * fabs(p_obj_old - p_obj) + gamma * gap_t
+                            r_screen = sqrt(fmin(double_tmp, gap_t)) / lambda_
 
                         for j in range(n_features):
 
