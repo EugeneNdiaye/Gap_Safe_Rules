@@ -283,13 +283,15 @@ def cd_lasso(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
 
                             if fabs(XTR[j]) + r_normX_j * dual_scale < dual_scale:
 
-                                if beta[j] != 0.:
+                                beta_old_j = beta[j]
+                                beta[j] = 0.
+
+                                if beta[j] != beta_old_j:
                                     beta_diff = beta_old_j - beta[j]
                                     update_residual(n_samples, X_j_ptr, X_data, X_indices,
                                                     & residual[0], & beta[0], X_mean_j,
                                                     startptr, endptr, beta_diff,
                                                     & sum_residual, sparse, center)
-                                    beta[j] = 0.
 
                                 # we "set" x_j to zero since the j_th feature is inactive
                                 XTR[j] = 0.
