@@ -177,7 +177,7 @@ def cd_lasso(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
 
         double gap_t = 1
         double double_tmp = 0
-        double gamma = 0.0001
+        double gamma = 1e-4
         double mu = 0
         double beta_old_j = 0
         double p_obj = 0.

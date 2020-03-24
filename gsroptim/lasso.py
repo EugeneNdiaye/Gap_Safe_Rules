@@ -12,7 +12,7 @@ DEEPS = 414
 
 
 def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
-               eps=1e-4, max_iter=3000, screen_method="aggr. GS", f=10):
+               eps=1e-4, max_iter=int(1e7), screen_method="aggr. GS", f=10):
     """Compute Lasso path with coordinate descent
 
     The Lasso optimization solves:
@@ -79,20 +79,14 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
         lambdas = np.array([lambdas])
 
     n_lambdas = len(lambdas)
-
     n_samples, n_features = X.shape
-    betas = np.zeros((n_features, n_lambdas))
 
     if beta_init is None:
         beta_init = np.zeros(n_features, dtype=float, order='F')
     else:
         beta_init = np.asarray(beta_init, order='F')
 
-    intercepts = np.zeros(n_lambdas)
     disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
-    gaps = np.ones(n_lambdas)
-    n_iters = np.zeros(n_lambdas)
-    n_active_features = np.zeros(n_lambdas)
 
     sparse = sp.sparse.issparse(X)
     center = fit_intercept
@@ -138,6 +132,25 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
 
     tol = eps * nrm2_y  # duality gap tolerance
     relax_screening = -1
+
+    # TODO: improve stuff there !!! and see what happens when we combine
+    # fast_path and a given_path
+
+    if n_lambdas == 1:
+        lmd_max = np.linalg.norm(XTR, ord=np.inf)
+        T = int(np.ceil((1 / np.log(0.6)) * np.log(lambdas[-1] / lmd_max)))
+        lambdas = np.geomspace(lmd_max, lambdas[-1], T)
+        tols = tol * lambdas / lambdas[-1]
+
+    else:
+        tols = tol * np.ones(n_lambdas)
+
+    n_lambdas = lambdas.shape[0]
+    betas = np.zeros((n_features, n_lambdas))
+    gaps = np.ones(n_lambdas)
+    n_iters = np.zeros(n_lambdas)
+    n_active_features = np.zeros(n_lambdas)
+    intercepts = np.zeros(n_lambdas)
 
     for t in range(n_lambdas):
 
@@ -194,14 +207,14 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
             gaps[t], sum_residual, n_iters[t], n_active_features[t] = \
                 cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean, beta_init,
                          norm_Xcent, XTR, residual, disabled_features, nrm2_y,
-                         lambdas[t], sum_residual, tol, max_iter, f,
+                         lambdas[t], sum_residual, tols[t], max_iter, f,
                          relax_screening, wstr_plus=1, sparse=sparse,
                          center=center)
 
         gaps[t], sum_residual, n_iters[t], n_active_features[t] = \
             cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean, beta_init,
                      norm_Xcent, XTR, residual, disabled_features, nrm2_y,
-                     lambdas[t], sum_residual, tol, max_iter, f, screening,
+                     lambdas[t], sum_residual, tols[t], max_iter, f, screening,
                      wstr_plus=0, sparse=sparse, center=center)
 
         betas[:, t] = beta_init.copy()
@@ -211,9 +224,9 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
         if t == 0 and screening != NO_SCREENING:
             n_active_features[0] = 0
 
-        if abs(gaps[t]) > tol:
+        if abs(gaps[t]) > tols[t]:
 
             print("warning: did not converge, t = ", t)
-            print("gap = ", gaps[t], "eps = ", eps)
+            print("gap = ", gaps[t], "eps = ", tols[t])
 
     return intercepts, betas, gaps, n_iters, n_active_features
