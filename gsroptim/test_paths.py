@@ -54,7 +54,6 @@ def test_sgl_path():
                                        dtype=np.intc)
     X, y = generate_data(n_samples, n_features, size_groups, rho=0.4)
     omega = np.sqrt(size_groups)
-    n_groups = len(size_groups)
     g_start = np.cumsum(size_groups, dtype=np.intc) - size_groups[0]
     lambda_max = build_lambdas(X, y, omega, size_groups, g_start,
                                n_lambdas=1)[0]

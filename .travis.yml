@@ -7,3 +7,5 @@ install:
 script:
 # TODO add unit tests and run pytest
   - flake8 --count gsroptim
+after_success:
+  - codecov
