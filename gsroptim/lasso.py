@@ -90,7 +90,7 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
 
     sparse = sp.sparse.issparse(X)
     center = fit_intercept
-    run_active_warm_start = True
+    run_active_warm_start = False
 
     if center:
         # We center the data for the intercept
@@ -156,12 +156,14 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
 
         if screen_method in [None, "no screening"]:
             screening = NO_SCREENING
+            run_active_warm_start = False
 
-        if screen_method == "Gap Safe (GS)":
+        elif screen_method == "Gap Safe (GS)":
             screening = GAPSAFE
+            run_active_warm_start = False
 
         # if strong_active_warm_start:
-        if screen_method == "strong GS":
+        elif screen_method == "strong GS":
             disabled_features = (np.abs(XTR) < 2. * lambdas[t] -
                                  lambdas[t - 1]).astype(np.intc)
             relax_screening = GAPSAFE
@@ -169,7 +171,7 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
             run_active_warm_start = True
 
         # if aggressive_strong_rule:
-        if screen_method == "aggr. strong GS":
+        elif screen_method == "aggr. strong GS":
             disabled_features = (np.abs(XTR) < 2. * lambdas[t] -
                                  lambdas[t - 1]).astype(np.intc)
             relax_screening = DEEPS
@@ -177,26 +179,26 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
             run_active_warm_start = True
 
         # if gap_active_warm_start:
-        if screen_method == "active warm start":
+        elif screen_method == "active warm start":
             run_active_warm_start = n_active_features[t] < n_features
             relax_screening = GAPSAFE
 
         # if strong_previous_active:
-        if screen_method == "active GS":
+        elif screen_method == "active GS":
             disabled_features = (np.abs(XTR) < lambdas[t]).astype(np.intc)
             relax_screening = GAPSAFE
             screening = GAPSAFE
             run_active_warm_start = True
 
         # if aggressive_strong_previous_active:
-        if screen_method == "aggr. active GS":
+        elif screen_method == "aggr. active GS":
             disabled_features = (np.abs(XTR) < lambdas[t]).astype(np.intc)
             relax_screening = DEEPS
             screening = GAPSAFE
             run_active_warm_start = True
 
         # if aggressive_active:
-        if screen_method == "aggr. GS":
+        elif screen_method == "aggr. GS":
             disabled_features = (np.abs(XTR) < lambdas[t]).astype(np.intc)
             relax_screening = DEEPS
             screening = GAPSAFE
