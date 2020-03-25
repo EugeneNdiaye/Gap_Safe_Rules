@@ -11,8 +11,9 @@ GAPSAFE = 2
 DEEPS = 414
 
 
-def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
-               eps=1e-4, max_iter=int(1e7), screen_method="aggr. GS", f=10):
+def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
+               max_iter=int(1e7), screen_method="aggr. GS", f=10,
+               verbose=False):
     """Compute Lasso path with coordinate descent
 
     The Lasso optimization solves:
@@ -226,9 +227,10 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False,
         if t == 0 and screening != NO_SCREENING:
             n_active_features[0] = 0
 
-        if abs(gaps[t]) > tols[t]:
+        if verbose:
+            if abs(gaps[t]) > tols[t]:
 
-            print("warning: did not converge, t = ", t)
-            print("gap = ", gaps[t], "eps = ", tols[t])
+                print("warning: did not converge, t = ", t)
+                print("gap = ", gaps[t], "eps = ", tols[t])
 
     return intercepts, betas, gaps, n_iters, n_active_features
