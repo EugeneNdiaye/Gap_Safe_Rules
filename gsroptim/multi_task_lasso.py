@@ -6,7 +6,11 @@
 # http://arxiv.org/abs/1602.06225
 # firstname.lastname@telecom-paristech.fr
 
+import warnings
 import numpy as np
+
+from sklearn.exceptions import ConvergenceWarning
+
 from .bcd_multitask_lasso_fast import bcd_fast
 
 NO_SCREENING = 0
@@ -17,7 +21,7 @@ GAPSAFE_DYN = 2
 def multitask_lasso_path(X, y, lambdas, beta_init=None, screen=GAPSAFE_DYN,
                          eps=1e-4, max_iter=100, f=10,
                          gap_active_warm_start=False,
-                         strong_active_warm_start=True):
+                         strong_active_warm_start=True, verbose=False):
     """Compute multitask Lasso path with block coordinate descent
 
     The multitask Lasso optimization solves:
@@ -67,7 +71,7 @@ def multitask_lasso_path(X, y, lambdas, beta_init=None, screen=GAPSAFE_DYN,
     betas : array, shape (n_features, n_lambdas)
         Coefficients along the path.
 
-    dual_gaps : array, shape (n_lambdas,)
+    gaps : array, shape (n_lambdas,)
         The dual gaps at the end of the optimization for each lambda.
 
     lambdas : ndarray
@@ -110,7 +114,7 @@ def multitask_lasso_path(X, y, lambdas, beta_init=None, screen=GAPSAFE_DYN,
     disabled_features = np.zeros(n_features, dtype=np.intc, order='F')
     dual_scale = lambdas[0]
 
-    dual_gaps = np.ones(n_lambdas)
+    gaps = np.ones(n_lambdas)
     n_iters = np.zeros(n_lambdas)
     n_active_features = np.zeros(n_lambdas)
 
@@ -145,13 +149,13 @@ def multitask_lasso_path(X, y, lambdas, beta_init=None, screen=GAPSAFE_DYN,
                          disabled_features, beta_old_g, gradient_step,
                          wstr_plus=0)
 
-        dual_gaps[t], dual_scale, n_iters[t], n_active_features[t],\
+        gaps[t], dual_scale, n_iters[t], n_active_features[t],\
             norm_res2 = model
         betas[:, :, t] = beta_init.copy()
 
-        if abs(dual_gaps[t]) > tol:
-            print("Warning did not converge : \n" +
-                  " t = %s gap = %s tol = %s n_iter = %s" %
-                  (t, dual_gaps[t], tol, n_iters[t]))
+        if verbose and abs(gaps[t]) > tol:
+            warnings.warn('Solver did not converge after '
+                          '%i iterations: dual gap: %.3e'
+                          % (max_iter, gaps[t]), ConvergenceWarning)
 
-    return betas, dual_gaps, n_iters, n_active_features
+    return betas, gaps, n_iters, n_active_features

@@ -7,6 +7,10 @@
 # firstname.lastname@telecom-paristech.fr
 
 import numpy as np
+import warnings
+
+from sklearn.exceptions import ConvergenceWarning
+
 from .sgl_fast import bcd_fast
 from gsroptim.sgl_tools import build_lambdas, precompute_norm
 
@@ -17,7 +21,8 @@ GAPSAFE = 2
 
 def sgl_path(X, y, size_groups, omega, lambdas=None, tau=0.5, lambda2=0,
              beta_init=None, screen=GAPSAFE, max_iter=30000, f=10, eps=1e-4,
-             gap_active_warm_start=False, strong_active_warm_start=True):
+             gap_active_warm_start=False, strong_active_warm_start=True,
+             verbose=False):
     """Compute Sparse-Group-Lasso path with block coordinate descent
 
     The Sparse-Group Lasso formulation reads:
@@ -75,7 +80,7 @@ def sgl_path(X, y, size_groups, omega, lambdas=None, tau=0.5, lambda2=0,
     betas : array, shape (n_features, n_lambdas)
         Coefficients along the path.
 
-    dual_gaps : array, shape (n_lambdas,)
+    gaps : array, shape (n_lambdas,)
         The dual gaps at the end of the optimization for each lambda.
 
     n_iters : array-like, shape (n_lambdas,)
@@ -94,7 +99,7 @@ def sgl_path(X, y, size_groups, omega, lambdas=None, tau=0.5, lambda2=0,
     g_start = np.cumsum(size_groups, dtype=np.intc) - size_groups[0]
 
     if lambdas is None:
-        lambdas, imax = build_lambdas(X, y, omega, size_groups, g_start)
+        lambdas, _ = build_lambdas(X, y, omega, size_groups, g_start)
 
     # Useful precomputation
     norm_X, norm_X_g, nrm2_y = precompute_norm(X, y, size_groups, g_start)
@@ -123,7 +128,7 @@ def sgl_path(X, y, size_groups, omega, lambdas=None, tau=0.5, lambda2=0,
     XTR = np.asfortranarray(np.dot(X.T, residual))
     dual_scale = lambda_max  # good iif beta_init = 0
 
-    dual_gaps = np.ones(n_lambdas)
+    gaps = np.ones(n_lambdas)
     screening_sizes_features = np.zeros(n_lambdas)
     screening_sizes_groups = np.zeros(n_lambdas)
     n_iters = np.zeros(n_lambdas)
@@ -164,15 +169,14 @@ def sgl_path(X, y, size_groups, omega, lambdas=None, tau=0.5, lambda2=0,
                          screen, disabled_features, disabled_groups,
                          wstr_plus=0, strong_warm_start=0)
 
-        dual_scale, dual_gaps[t], n_active_groups, n_active_features, \
-            n_iters[t] = model
+        dual_scale, gaps[t], _, _, n_iters[t] = model
 
         betas[:, t] = beta_init.copy()
 
-        if abs(dual_gaps[t]) > tol:
-            print("Warning did not converge : \n" +
-                  "t = %s gap = %s eps = %s n_iter = %s" %
-                  (t, dual_gaps[t], eps, n_iters[t]))
+        if verbose and abs(gaps[t]) > tol[t]:
+            warnings.warn('Solver did not converge after '
+                          '%i iterations: dual gap: %.3e'
+                          % (max_iter, gaps[t]), ConvergenceWarning)
 
-    return (betas, dual_gaps, n_iters, screening_sizes_groups,
+    return (betas, gaps, n_iters, screening_sizes_groups,
             screening_sizes_features)

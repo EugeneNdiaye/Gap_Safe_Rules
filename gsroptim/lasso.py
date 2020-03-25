@@ -1,8 +1,12 @@
 from __future__ import print_function
 
+import warnings
 import numpy as np
 import scipy as sp
 from numpy.linalg import norm
+
+from sklearn.exceptions import ConvergenceWarning
+
 from .cd_lasso_fast import cd_lasso, matrix_column_norm
 
 NO_SCREENING = 0
@@ -227,10 +231,9 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
         if t == 0 and screening != NO_SCREENING:
             n_active_features[0] = 0
 
-        if verbose:
-            if abs(gaps[t]) > tols[t]:
-
-                print("warning: did not converge, t = ", t)
-                print("gap = ", gaps[t], "eps = ", tols[t])
+        if verbose and abs(gaps[t]) > tols[t]:
+            warnings.warn('Solver did not converge after '
+                          '%i iterations: dual gap: %.3e'
+                          % (max_iter, gaps[t]), ConvergenceWarning)
 
     return intercepts, betas, gaps, n_iters, n_active_features
