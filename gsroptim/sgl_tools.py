@@ -67,7 +67,7 @@ def epsilon_norm(x, alpha, R):
 
     """
     if alpha == 0 and R != 0:
-            return np.linalg.norm(x, ord=2) / R
+        return np.linalg.norm(x, ord=2) / R
 
     if R == 0:  # j0 = 0 iif R = 0 iif alpha = 1 in practice
         return np.linalg.norm(x, ord=np.inf) / alpha
