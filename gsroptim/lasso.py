@@ -141,7 +141,7 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
     # TODO: improve stuff there !!! and see what happens when we combine
     # fast_path and a given_path
 
-    if n_lambdas == 1:
+    if n_lambdas == 1 and screen_method == "aggr. GS":
         lmd_max = np.linalg.norm(XTR, ord=np.inf)
         T = int(np.ceil((1 / np.log(0.6)) * np.log(lambdas[-1] / lmd_max)))
         lambdas = np.geomspace(lmd_max, lambdas[-1], T)
