@@ -40,7 +40,7 @@ def test_lasso_path():
 
 def test_mtl_path():
     X, y = make_regression(n_samples=20, n_features=100,
-                           n_targets=4, random_state=3)
+                           n_targets=4, random_state=0)
     lambda_max = np.max(np.sqrt(np.sum(np.dot(X.T, y) ** 2, axis=1)))
     lambdas = lambda_max / np.arange(5, 30, 5)
     eps = 1e-8
