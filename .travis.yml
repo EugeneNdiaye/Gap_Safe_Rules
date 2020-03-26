@@ -1,4 +1,11 @@
 language: python
 # command to install dependencies
 install:
+  - pip install pytest pytest-cov coverage numpydoc  # for testing
+  - pip install flake8 check-manifest codecov
   - pip install -e .
+script:
+# TODO add unit tests and run pytest
+  - flake8 --count gsroptim
+after_success:
+  - codecov

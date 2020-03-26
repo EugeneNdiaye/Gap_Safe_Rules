@@ -1,3 +1,5 @@
+![](https://api.travis-ci.org/EugeneNdiaye/gsroptim.svg?branch=master)
+![](https://codecov.io/gh/EugeneNdiaye/gsroptim/branch/master/graphs/badge.svg?branch=master)
 # Gap Safe screening rules for sparsity enforcing penalties.
 
 This package implements coordinate descent with Gap Safe screening rules. See our paper https://arxiv.org/abs/1611.05780 for more details.
@@ -6,7 +8,9 @@ This package implements coordinate descent with Gap Safe screening rules. See ou
 # Examples in classification and regression
 ```python
 import numpy as np
+
 from sklearn.datasets import make_classification, make_regression
+
 from gsroptim.sgl_tools import generate_data
 from gsroptim.logreg import logreg_path
 from gsroptim.lasso import lasso_path
