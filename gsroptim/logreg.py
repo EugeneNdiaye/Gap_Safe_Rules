@@ -6,8 +6,12 @@
 # https://arxiv.org/abs/1611.05780
 # firstname.lastname@telecom-paristech.fr
 
+import warnings
 import numpy as np
 import scipy as sp
+
+from sklearn.exceptions import ConvergenceWarning
+
 from .cd_logreg_fast import cd_logreg
 
 NO_SCREENING = 0
@@ -17,7 +21,7 @@ GAPSAFE = 2
 
 def logreg_path(X, y, lambdas, beta_init=None, eps=1e-4, max_iter=3000, f=10,
                 screening=GAPSAFE, gap_active_warm_start=False,
-                strong_active_warm_start=True):
+                strong_active_warm_start=True, verbose=False):
     """Compute l1-regularized logistic regression path with coordinate descent
 
     We solve:
@@ -173,9 +177,9 @@ def logreg_path(X, y, lambdas, beta_init=None, eps=1e-4, max_iter=3000, f=10,
 
         betas[:, t] = beta_init.copy()
 
-        if abs(gaps[t]) > tol:
-
-            print("warning: did not converge, t = ", t)
-            print("gap = ", gaps[t], "eps = ", eps)
+        if verbose and abs(gaps[t]) > tol:
+            warnings.warn('Solver did not converge after '
+                          '%i iterations: dual gap: %.3e'
+                          % (max_iter, gaps[t]), ConvergenceWarning)
 
     return betas, gaps, n_iters, n_active_features
