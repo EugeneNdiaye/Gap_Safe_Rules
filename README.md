@@ -1,5 +1,5 @@
-![](https://travis-ci.com/EugeneNdiaye/Gap_Safe_Rules.svg?branch=master)
-![](https://codecov.io/gh/EugeneNdiaye/Gap_Safe_Rules/branch/master/graphs/badge.svg?branch=master)
+[![](https://travis-ci.com/EugeneNdiaye/Gap_Safe_Rules.svg?branch=master)][https://travis-ci.com/github/EugeneNdiaye/Gap_Safe_Rules]
+[![](https://codecov.io/gh/EugeneNdiaye/Gap_Safe_Rules/branch/master/graphs/badge.svg?branch=master)][https://codecov.io/gh/EugeneNdiaye/Gap_Safe_Rules/]
 # Gap Safe screening rules for sparsity enforcing penalties.
 
 This package implements coordinate descent with Gap Safe screening rules. See our paper https://arxiv.org/abs/1611.05780 for more details.
