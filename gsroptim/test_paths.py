@@ -12,7 +12,7 @@ from gsroptim.sgl import sgl_path, build_lambdas
 def test_logreg_path():
     n_samples, n_features = 20, 100
     X, y = make_classification(n_samples=n_samples, n_features=n_features,
-                               n_classes=2)
+                               n_classes=2, random_state=0)
     lambda_max = np.linalg.norm(np.dot(X.T, 0.5 - y), ord=np.inf)
     lambdas = lambda_max / np.arange(5, 30, 5)
     eps = 1e-8
@@ -26,7 +26,8 @@ def test_logreg_path():
 
 def test_lasso_path():
     n_samples, n_features = 20, 100
-    X, y = make_regression(n_samples=n_samples, n_features=n_features)
+    X, y = make_regression(n_samples=n_samples,
+                           n_features=n_features, random_state=2)
     lambda_max = np.linalg.norm(np.dot(X.T, y), ord=np.inf)
     lambdas = lambda_max / np.arange(5, 30, 5)
 
@@ -38,7 +39,8 @@ def test_lasso_path():
 
 
 def test_mtl_path():
-    X, y = make_regression(n_samples=20, n_features=100, n_targets=4)
+    X, y = make_regression(n_samples=20, n_features=100,
+                           n_targets=4, random_state=0)
     lambda_max = np.max(np.sqrt(np.sum(np.dot(X.T, y) ** 2, axis=1)))
     lambdas = lambda_max / np.arange(5, 30, 5)
     eps = 1e-8
