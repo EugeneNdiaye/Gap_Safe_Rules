@@ -16,8 +16,8 @@ DEEPS = 414
 
 
 def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
-               max_iter=int(1e7), screen_method="aggr. GS", f=10,
-               verbose=False):
+               max_iter=int(1e7), screen_method="aggr. active GS", f=10,
+               gamma=None, verbose=False):
     """Compute Lasso path with coordinate descent
 
     The Lasso optimization solves:
@@ -144,6 +144,12 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
     n_active_features = np.zeros(n_lambdas)
     intercepts = np.zeros(n_lambdas)
 
+    # This is a heuristic fix of normalization issue
+    if np.max(norm_Xcent) <= 1:
+        gamma = 1e-4
+    else:
+        gamma = 1e-2
+
     for t in range(n_lambdas):
 
         if n_lambdas == 1 or t == 0:
@@ -204,25 +210,28 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
 
             # if aggressive_active:
             elif screen_method == "aggr. GS":
-                disabled_features = (np.abs(XTR) < lmd_t).astype(np.intc)
                 relax_screening = DEEPS
                 screening = GAPSAFE
                 run_active_warm_start = True
 
             if run_active_warm_start:
 
-                _, sum_residual, _, _ = \
+                _, sum_residual, n_iter, n_feat = \
                     cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean,
                              beta_init, norm_Xcent, XTR, residual,
                              disabled_features, nrm2_y, lmd_t, sum_residual,
                              tol_t, max_iter, f, relax_screening, wstr_plus=1,
-                             sparse=sparse, center=center)
+                             sparse=sparse, center=center, gamma=gamma)
+
+                # print("unsafe |--", n_iter, n_feat)
 
             gaps[t], sum_residual, n_iters[t], n_active_features[t] = \
                 cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean, beta_init,
                          norm_Xcent, XTR, residual, disabled_features, nrm2_y,
                          lmd_t, sum_residual, tol_t, max_iter, f, screening,
-                         wstr_plus=0, sparse=sparse, center=center)
+                         wstr_plus=0, sparse=sparse, center=center, gamma=gamma)
+
+            # print("safe |--", n_iters[t], n_active_features[t])
 
             if lmd_t == lambdas[t]:
                 break

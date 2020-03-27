@@ -158,7 +158,7 @@ def cd_lasso(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
              double[::1] norm_Xcent, double[::1] XTR, double[::1] residual,
              int[::1] disabled_features, double nrm2_y, double lambda_,
              double sum_residual, double tol, int max_iter, int f,
-             int screening, int wstr_plus=0, int sparse=0, int center=0):
+             int screening, int wstr_plus=0, int sparse=0, int center=0, double gamma=1e-3):
     """
         Solve 1/2 ||y - X beta||^2 + lambda_ ||beta||_1
     """
@@ -177,7 +177,6 @@ def cd_lasso(double[::1, :] X, double[::1] X_data, int[::1] X_indices,
 
         double gap_t = 1
         double double_tmp = 0
-        double gamma = 1e-4
         double mu = 0
         double beta_old_j = 0
         double p_obj = 0.
