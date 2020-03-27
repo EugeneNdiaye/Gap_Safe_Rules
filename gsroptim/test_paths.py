@@ -1,5 +1,8 @@
+import pytest
+import itertools
 import numpy as np
 
+from scipy import sparse
 from sklearn.datasets import make_classification, make_regression
 
 from gsroptim.sgl_tools import generate_data
@@ -7,6 +10,11 @@ from gsroptim.logreg import logreg_path
 from gsroptim.lasso import lasso_path
 from gsroptim.multi_task_lasso import multitask_lasso_path
 from gsroptim.sgl import sgl_path, build_lambdas
+
+
+SCREEN_METHODS = [
+    "Gap Safe (GS)", "aggr. GS", "strong GS", "aggr. strong GS",
+    "active warm start", "active GS", "aggr. active G"]
 
 
 def test_logreg_path():
@@ -24,7 +32,28 @@ def test_logreg_path():
     np.testing.assert_array_less(gaps, tol)
 
 
-def test_lasso_path():
+@pytest.mark.parametrize("sparse_X, fit_intercept",
+                         itertools.product([True, False], [True, False]))
+def test_lasso_path(sparse_X, fit_intercept):
+    n_samples, n_features = 20, 100
+    X, y = make_regression(n_samples=n_samples,
+                           n_features=n_features, random_state=2)
+    if sparse_X:
+        X = sparse.random(n_samples, n_features, random_state=2, format='csc',
+                          density=0.5)
+    lambda_max = np.linalg.norm(np.dot(X.T, y), ord=np.inf)
+    lambdas = lambda_max / np.arange(5, 30, 5)
+
+    eps = 1e-8
+    betas, gaps = lasso_path(X, y, lambdas, eps=eps,
+                             fit_intercept=fit_intercept)[1:3]
+    # beware that tol is scaled inside:
+    tol = eps * np.linalg.norm(y) ** 2
+    np.testing.assert_array_less(gaps, tol)
+
+
+@pytest.mark.parametrize("screen_method", SCREEN_METHODS)
+def test_lasso_rules(screen_method):
     n_samples, n_features = 20, 100
     X, y = make_regression(n_samples=n_samples,
                            n_features=n_features, random_state=2)
@@ -32,7 +61,8 @@ def test_lasso_path():
     lambdas = lambda_max / np.arange(5, 30, 5)
 
     eps = 1e-8
-    betas, gaps = lasso_path(X, y, lambdas, eps=eps)[1:3]
+    betas, gaps = lasso_path(
+        X, y, lambdas, eps=eps, screen_method=screen_method)[1:3]
     # beware that tol is scaled inside:
     tol = eps * np.linalg.norm(y) ** 2
     np.testing.assert_array_less(gaps, tol)
