@@ -5,7 +5,7 @@ install:
   - pip install flake8 check-manifest codecov
   - pip install -e .
 script:
-# TODO add unit tests and run pytest
+  - pytest -lv --cov-report term-missing gsroptim --cov=gsroptim --cov-config .coveragerc
   - flake8 --count gsroptim
 after_success:
   - codecov

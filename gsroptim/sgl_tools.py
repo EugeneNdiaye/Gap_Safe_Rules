@@ -33,7 +33,7 @@ def generate_data(n_samples, n_features, size_groups, rho=0.5,
 
     # 10% of groups are actives
     gamma1 = int(np.ceil(n_groups * 0.1))
-    selected_groups = rng.random_integers(0, n_groups - 1, gamma1)
+    selected_groups = rng.randint(0, n_groups - 1, gamma1)
     true_beta = np.zeros(n_features)
 
     for i in selected_groups:
