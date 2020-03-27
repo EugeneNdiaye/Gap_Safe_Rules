@@ -138,19 +138,6 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
     tol = eps * nrm2_y  # duality gap tolerance
     relax_screening = -1
 
-    # TODO: improve stuff there !!! and see what happens when we combine
-    # fast_path and a given_path
-
-    if n_lambdas == 1 and screen_method == "aggr. GS":
-        lmd_max = np.linalg.norm(XTR, ord=np.inf)
-        T = int(np.ceil((1 / np.log(0.6)) * np.log(lambdas[-1] / lmd_max)))
-        lambdas = np.geomspace(lmd_max, lambdas[-1], T)
-        tols = tol * lambdas / lambdas[-1]
-
-    else:
-        tols = tol * np.ones(n_lambdas)
-
-    n_lambdas = lambdas.shape[0]
     betas = np.zeros((n_features, n_lambdas))
     gaps = np.ones(n_lambdas)
     n_iters = np.zeros(n_lambdas)
@@ -159,70 +146,86 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
 
     for t in range(n_lambdas):
 
-        if screen_method in [None, "no screening"]:
-            screening = NO_SCREENING
-            run_active_warm_start = False
+        if n_lambdas == 1 or t == 0:
+            lmd_t = np.linalg.norm(XTR, ord=np.inf)
+        else:
+            lmd_t = lambdas[t - 1]
 
-        elif screen_method == "Gap Safe (GS)":
-            screening = GAPSAFE
-            run_active_warm_start = False
+        while True:
 
-        # if strong_active_warm_start:
-        elif screen_method == "strong GS":
-            disabled_features = (np.abs(XTR) < 2. * lambdas[t] -
-                                 lambdas[t - 1]).astype(np.intc)
-            relax_screening = GAPSAFE
-            screening = GAPSAFE
-            run_active_warm_start = True
+            lmd_t = max(lmd_t * 0.6, lambdas[t])
+            if lmd_t != lambdas[-1]:
+                tol_t = max(tol, 1e-4 * nrm2_y) * (lmd_t / lambdas[t])
+            else:
+                tol_t = tol
 
-        # if aggressive_strong_rule:
-        elif screen_method == "aggr. strong GS":
-            disabled_features = (np.abs(XTR) < 2. * lambdas[t] -
-                                 lambdas[t - 1]).astype(np.intc)
-            relax_screening = DEEPS
-            screening = GAPSAFE
-            run_active_warm_start = True
+            if screen_method in [None, "no screening"]:
+                screening = NO_SCREENING
+                run_active_warm_start = False
 
-        # if gap_active_warm_start:
-        elif screen_method == "active warm start":
-            run_active_warm_start = n_active_features[t] < n_features
-            relax_screening = GAPSAFE
+            elif screen_method == "Gap Safe (GS)":
+                screening = GAPSAFE
+                run_active_warm_start = False
 
-        # if strong_previous_active:
-        elif screen_method == "active GS":
-            disabled_features = (np.abs(XTR) < lambdas[t]).astype(np.intc)
-            relax_screening = GAPSAFE
-            screening = GAPSAFE
-            run_active_warm_start = True
+            # if strong_active_warm_start:
+            elif screen_method == "strong GS":
+                disabled_features = (np.abs(XTR) < 2. * lmd_t -
+                                     lambdas[t - 1]).astype(np.intc)
+                relax_screening = GAPSAFE
+                screening = GAPSAFE
+                run_active_warm_start = True
 
-        # if aggressive_strong_previous_active:
-        elif screen_method == "aggr. active GS":
-            disabled_features = (np.abs(XTR) < lambdas[t]).astype(np.intc)
-            relax_screening = DEEPS
-            screening = GAPSAFE
-            run_active_warm_start = True
+            # if aggressive_strong_rule:
+            elif screen_method == "aggr. strong GS":
+                disabled_features = (np.abs(XTR) < 2. * lmd_t -
+                                     lambdas[t - 1]).astype(np.intc)
+                relax_screening = DEEPS
+                screening = GAPSAFE
+                run_active_warm_start = True
 
-        # if aggressive_active:
-        elif screen_method == "aggr. GS":
-            disabled_features = (np.abs(XTR) < lambdas[t]).astype(np.intc)
-            relax_screening = DEEPS
-            screening = GAPSAFE
-            run_active_warm_start = True
+            # if gap_active_warm_start:
+            elif screen_method == "active warm start":
+                run_active_warm_start = n_active_features[t] < n_features
+                relax_screening = GAPSAFE
 
-        if run_active_warm_start:
+            # if strong_previous_active:
+            elif screen_method == "active GS":
+                disabled_features = (np.abs(XTR) < lmd_t).astype(np.intc)
+                relax_screening = GAPSAFE
+                screening = GAPSAFE
+                run_active_warm_start = True
+
+            # if aggressive_strong_previous_active:
+            elif screen_method == "aggr. active GS":
+                disabled_features = (np.abs(XTR) < lmd_t).astype(np.intc)
+                relax_screening = DEEPS
+                screening = GAPSAFE
+                run_active_warm_start = True
+
+            # if aggressive_active:
+            elif screen_method == "aggr. GS":
+                disabled_features = (np.abs(XTR) < lmd_t).astype(np.intc)
+                relax_screening = DEEPS
+                screening = GAPSAFE
+                run_active_warm_start = True
+
+            if run_active_warm_start:
+
+                _, sum_residual, _, _ = \
+                    cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean,
+                             beta_init, norm_Xcent, XTR, residual,
+                             disabled_features, nrm2_y, lmd_t, sum_residual,
+                             tol_t, max_iter, f, relax_screening, wstr_plus=1,
+                             sparse=sparse, center=center)
 
             gaps[t], sum_residual, n_iters[t], n_active_features[t] = \
                 cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean, beta_init,
                          norm_Xcent, XTR, residual, disabled_features, nrm2_y,
-                         lambdas[t], sum_residual, tols[t], max_iter, f,
-                         relax_screening, wstr_plus=1, sparse=sparse,
-                         center=center)
+                         lmd_t, sum_residual, tol_t, max_iter, f, screening,
+                         wstr_plus=0, sparse=sparse, center=center)
 
-        gaps[t], sum_residual, n_iters[t], n_active_features[t] = \
-            cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean, beta_init,
-                     norm_Xcent, XTR, residual, disabled_features, nrm2_y,
-                     lambdas[t], sum_residual, tols[t], max_iter, f, screening,
-                     wstr_plus=0, sparse=sparse, center=center)
+            if lmd_t == lambdas[t]:
+                break
 
         betas[:, t] = beta_init.copy()
         if fit_intercept:
@@ -231,7 +234,7 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
         if t == 0 and screening != NO_SCREENING:
             n_active_features[0] = 0
 
-        if verbose and abs(gaps[t]) > tols[t]:
+        if verbose and abs(gaps[t]) > tol:
             warnings.warn('Solver did not converge after '
                           '%i iterations: dual gap: %.3e'
                           % (max_iter, gaps[t]), ConvergenceWarning)
