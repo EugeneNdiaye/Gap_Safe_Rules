@@ -199,6 +199,7 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
             elif screen_method == "active warm start":
                 run_active_warm_start = n_active_features[t] < n_features
                 relax_screening = GAPSAFE
+                screening = GAPSAFE
 
             # if strong_previous_active:
             elif screen_method == "active GS":
