@@ -14,14 +14,14 @@ from gsroptim.sgl import sgl_path, build_lambdas
 
 SCREEN_METHODS = [
     "Gap Safe (GS)", "aggr. GS", "strong GS", "aggr. strong GS",
-    "active warm start", "active GS", "aggr. active G"]
+    "active warm start", "active GS", "aggr. active GS"]
 
 
 def test_logreg_path():
     n_samples, n_features = 20, 100
     X, y = make_classification(n_samples=n_samples, n_features=n_features,
                                n_classes=2, random_state=0)
-    lambda_max = np.linalg.norm(np.dot(X.T, 0.5 - y), ord=np.inf)
+    lambda_max = np.linalg.norm(X.T @ (0.5 - y), ord=np.inf)
     lambdas = lambda_max / np.arange(5, 30, 5)
     eps = 1e-8
     betas, gaps = logreg_path(X, y, lambdas, eps=eps)[:2]
@@ -41,7 +41,7 @@ def test_lasso_path(sparse_X, fit_intercept):
     if sparse_X:
         X = sparse.random(n_samples, n_features, random_state=2, format='csc',
                           density=0.5)
-    lambda_max = np.linalg.norm(np.dot(X.T, y), ord=np.inf)
+    lambda_max = np.linalg.norm(X.T @ y, ord=np.inf)
     lambdas = lambda_max / np.arange(5, 30, 5)
 
     eps = 1e-8
@@ -57,7 +57,7 @@ def test_lasso_rules(screen_method):
     n_samples, n_features = 20, 100
     X, y = make_regression(n_samples=n_samples,
                            n_features=n_features, random_state=2)
-    lambda_max = np.linalg.norm(np.dot(X.T, y), ord=np.inf)
+    lambda_max = np.linalg.norm(X.T @ y, ord=np.inf)
     lambdas = lambda_max / np.arange(5, 30, 5)
 
     eps = 1e-8
@@ -71,7 +71,7 @@ def test_lasso_rules(screen_method):
 def test_mtl_path():
     X, y = make_regression(n_samples=20, n_features=100,
                            n_targets=4, random_state=0)
-    lambda_max = np.max(np.sqrt(np.sum(np.dot(X.T, y) ** 2, axis=1)))
+    lambda_max = np.max(np.sqrt(np.sum((X.T @ y) ** 2, axis=1)))
     lambdas = lambda_max / np.arange(5, 30, 5)
     eps = 1e-8
     betas, gaps = multitask_lasso_path(X, y, lambdas, eps=eps)[:2]
