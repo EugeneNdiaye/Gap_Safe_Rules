@@ -1,5 +1,8 @@
+import pytest
+import itertools
 import numpy as np
 
+from scipy import sparse
 from sklearn.datasets import make_classification, make_regression
 
 from gsroptim.sgl_tools import generate_data
@@ -9,11 +12,16 @@ from gsroptim.multi_task_lasso import multitask_lasso_path
 from gsroptim.sgl import sgl_path, build_lambdas
 
 
+SCREEN_METHODS = [
+    "Gap Safe (GS)", "aggr. GS", "strong GS", "aggr. strong GS",
+    "active warm start", "active GS", "aggr. active GS"]
+
+
 def test_logreg_path():
     n_samples, n_features = 20, 100
     X, y = make_classification(n_samples=n_samples, n_features=n_features,
                                n_classes=2, random_state=0)
-    lambda_max = np.linalg.norm(np.dot(X.T, 0.5 - y), ord=np.inf)
+    lambda_max = np.linalg.norm(X.T @ (0.5 - y), ord=np.inf)
     lambdas = lambda_max / np.arange(5, 30, 5)
     eps = 1e-8
     betas, gaps = logreg_path(X, y, lambdas, eps=eps)[:2]
@@ -24,15 +32,37 @@ def test_logreg_path():
     np.testing.assert_array_less(gaps, tol)
 
 
-def test_lasso_path():
+@pytest.mark.parametrize("sparse_X, fit_intercept",
+                         itertools.product([True, False], [True, False]))
+def test_lasso_path(sparse_X, fit_intercept):
     n_samples, n_features = 20, 100
     X, y = make_regression(n_samples=n_samples,
                            n_features=n_features, random_state=2)
-    lambda_max = np.linalg.norm(np.dot(X.T, y), ord=np.inf)
+    if sparse_X:
+        X = sparse.random(n_samples, n_features, random_state=2, format='csc',
+                          density=0.5)
+    lambda_max = np.linalg.norm(X.T @ y, ord=np.inf)
     lambdas = lambda_max / np.arange(5, 30, 5)
 
     eps = 1e-8
-    betas, gaps = lasso_path(X, y, lambdas, eps=eps)[1:4]
+    betas, gaps = lasso_path(X, y, lambdas, eps=eps,
+                             fit_intercept=fit_intercept)[1:3]
+    # beware that tol is scaled inside:
+    tol = eps * np.linalg.norm(y) ** 2
+    np.testing.assert_array_less(gaps, tol)
+
+
+@pytest.mark.parametrize("screen_method", SCREEN_METHODS)
+def test_lasso_rules(screen_method):
+    n_samples, n_features = 20, 100
+    X, y = make_regression(n_samples=n_samples,
+                           n_features=n_features, random_state=2)
+    lambda_max = np.linalg.norm(X.T @ y, ord=np.inf)
+    lambdas = lambda_max / np.arange(5, 30, 5)
+
+    eps = 1e-8
+    betas, gaps = lasso_path(
+        X, y, lambdas, eps=eps, screen_method=screen_method)[1:3]
     # beware that tol is scaled inside:
     tol = eps * np.linalg.norm(y) ** 2
     np.testing.assert_array_less(gaps, tol)
@@ -41,7 +71,7 @@ def test_lasso_path():
 def test_mtl_path():
     X, y = make_regression(n_samples=20, n_features=100,
                            n_targets=4, random_state=0)
-    lambda_max = np.max(np.sqrt(np.sum(np.dot(X.T, y) ** 2, axis=1)))
+    lambda_max = np.max(np.sqrt(np.sum((X.T @ y) ** 2, axis=1)))
     lambdas = lambda_max / np.arange(5, 30, 5)
     eps = 1e-8
     betas, gaps = multitask_lasso_path(X, y, lambdas, eps=eps)[:2]

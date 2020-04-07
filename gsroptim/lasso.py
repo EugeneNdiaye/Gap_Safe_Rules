@@ -221,6 +221,9 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
                 screening = GAPSAFE
                 run_active_warm_start = True
 
+            else:
+                raise ValueError("Unknown screening rule: %s" % screen_method)
+
             if run_active_warm_start:
 
                 _, sum_residual, n_iter, n_feat = \
@@ -236,7 +239,8 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
                 cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean, beta_init,
                          norm_Xcent, XTR, residual, disabled_features, nrm2_y,
                          lmd_t, sum_residual, tol_t, max_iter, f, screening,
-                         wstr_plus=0, sparse=sparse, center=center, gamma=gamma)
+                         wstr_plus=0, sparse=sparse, center=center,
+                         gamma=gamma)
 
             # print("safe |--", n_iters[t], n_active_features[t], gaps[t])
 
