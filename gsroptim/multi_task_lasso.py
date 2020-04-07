@@ -19,7 +19,7 @@ GAPSAFE_DYN = 2
 
 
 def multitask_lasso_path(X, y, lambdas, beta_init=None, screen=GAPSAFE_DYN,
-                         eps=1e-4, max_iter=100, f=10,
+                         eps=1e-4, max_iter=int(1e7), f=10,
                          gap_active_warm_start=False,
                          strong_active_warm_start=True, verbose=False):
     """Compute multitask Lasso path with block coordinate descent
