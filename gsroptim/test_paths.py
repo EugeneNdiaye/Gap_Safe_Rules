@@ -10,7 +10,7 @@ from gsroptim.sgl_tools import generate_data
 from gsroptim.logreg import logreg_path
 from gsroptim.lasso import lasso_path
 from gsroptim.multi_task_lasso import multitask_lasso_path
-from gsr_optim.multinomial import multinomial_path
+from gsroptim.multinomial import multinomial_path
 from gsroptim.sgl import sgl_path, build_lambdas
 
 
