@@ -32,7 +32,7 @@ def test_lasso_path():
     lambdas = lambda_max / np.arange(5, 30, 5)
 
     eps = 1e-8
-    betas, gaps, n_iters = lasso_path(X, y, lambdas, eps=eps)[1:4]
+    betas, gaps = lasso_path(X, y, lambdas, eps=eps)[1:4]
     # beware that tol is scaled inside:
     tol = eps * np.linalg.norm(y) ** 2
     np.testing.assert_array_less(gaps, tol)
