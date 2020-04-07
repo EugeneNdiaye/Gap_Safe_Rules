@@ -145,10 +145,11 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
     intercepts = np.zeros(n_lambdas)
 
     # This is a heuristic fix of normalization issue
-    if np.max(norm_Xcent) <= 1:
-        gamma = 1e-4
-    else:
-        gamma = 1e-2
+    if gamma is None:
+        if np.max(norm_Xcent) <= 1.5:
+            gamma = 1e-4
+        else:
+            gamma = 1e-2
 
     for t in range(n_lambdas):
 
@@ -159,8 +160,11 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
 
         while True:
 
+            lmd_t_prev = lmd_t
             lmd_t = max(lmd_t * 0.6, lambdas[t])
-            if lmd_t != lambdas[-1]:
+
+            # the test failed because it was lambdas[-1] instead of lambdas[t]
+            if lmd_t != lambdas[t]:
                 tol_t = max(tol, 1e-4 * nrm2_y) * (lmd_t / lambdas[t])
             else:
                 tol_t = tol
@@ -175,8 +179,10 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
 
             # if strong_active_warm_start:
             elif screen_method == "strong GS":
+                # disabled_features = (np.abs(XTR) < 2. * lmd_t -
+                #                      lambdas[t - 1]).astype(np.intc)
                 disabled_features = (np.abs(XTR) < 2. * lmd_t -
-                                     lambdas[t - 1]).astype(np.intc)
+                                     lmd_t_prev).astype(np.intc)
                 relax_screening = GAPSAFE
                 screening = GAPSAFE
                 run_active_warm_start = True
@@ -223,7 +229,7 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
                              tol_t, max_iter, f, relax_screening, wstr_plus=1,
                              sparse=sparse, center=center, gamma=gamma)
 
-                # print("unsafe |--", n_iter, n_feat)
+                # print("unsafe |--", n_iter, n_feat, gap)
 
             gaps[t], sum_residual, n_iters[t], n_active_features[t] = \
                 cd_lasso(X_, X_data, X_indices, X_indptr, y, X_mean, beta_init,
@@ -231,7 +237,7 @@ def lasso_path(X, y, lambdas, beta_init=None, fit_intercept=False, eps=1e-4,
                          lmd_t, sum_residual, tol_t, max_iter, f, screening,
                          wstr_plus=0, sparse=sparse, center=center, gamma=gamma)
 
-            # print("safe |--", n_iters[t], n_active_features[t])
+            # print("safe |--", n_iters[t], n_active_features[t], gaps[t])
 
             if lmd_t == lambdas[t]:
                 break
