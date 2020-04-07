@@ -40,7 +40,7 @@ def multinomial_path(X, y, screen=NO_SCREEN, beta_init=None, lambdas=None,
 
     coefs = np.zeros((n_features, n_tasks, n_lambdas), order='C')
 
-    Xbeta = np.asfortranarray(np.dot(X, beta_init))
+    Xbeta = np.asfortranarray(X @ beta_init)
     exp_Xbeta = np.exp(Xbeta)
     # TODO:make it sklearn independent
     normalize_exp_Xbeta = normalize(exp_Xbeta, norm='l1', axis=1)
