@@ -1,4 +1,3 @@
-from sklearn.preprocessing import LabelBinarizer
 import pytest
 import itertools
 import numpy as np
@@ -10,7 +9,6 @@ from gsroptim.sgl_tools import generate_data
 from gsroptim.logreg import logreg_path
 from gsroptim.lasso import lasso_path
 from gsroptim.multi_task_lasso import multitask_lasso_path
-from gsroptim.multinomial import multinomial_path
 from gsroptim.sgl import sgl_path, build_lambdas
 
 
@@ -102,11 +100,3 @@ def test_sgl_path():
     betas, gaps = sgl_path(X, y, size_groups, omega, lambdas, eps=eps)[:2]
     tol = eps * np.linalg.norm(y) ** 2
     np.testing.assert_array_less(gaps, tol)
-
-
-def test_multinomial_path():
-    n_samples, n_features = 20, 50
-    X, _ = generate_data(n_samples, n_features, rho=0.4)
-    y = np.random.choice(4, n_samples)
-    y = LabelBinarizer().fit_transform(y)
-    _, gaps = multinomial_path(X, y)
