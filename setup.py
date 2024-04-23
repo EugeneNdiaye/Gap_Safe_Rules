@@ -2,6 +2,7 @@ import glob
 from setuptools import dist, setup, Extension
 from setuptools.command.build_ext import build_ext
 dist.Distribution().fetch_build_eggs(['numpy>=1.12'])
+from Cython.Build import cythonize
 import numpy as np
 
 
@@ -36,5 +37,6 @@ setup(name='gsroptim',
                         'scikit-learn>=0.21', 'xarray'],
       packages=['gsroptim'],
       cmdclass={'build_ext': build_ext},
-      ext_modules=ext_modules,
+      # ext_modules=ext_modules,
+      ext_modules=cythonize(ext_modules)
       )

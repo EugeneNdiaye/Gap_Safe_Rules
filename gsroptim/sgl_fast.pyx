@@ -123,7 +123,7 @@ cdef double dual(int n_samples, int n_features, double * residual,
     return dval
 
 
-cdef int compare_doubles(void * a, void * b) nogil:
+cdef int compare_doubles(void * a, void * b) noexcept nogil:
 
     cdef:
         double * da = <double * > a
