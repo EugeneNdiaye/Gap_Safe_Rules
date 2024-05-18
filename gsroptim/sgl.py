@@ -169,7 +169,7 @@ def sgl_path(X, y, size_groups, omega, lambdas=None, tau=0.5, lambda2=0,
                          screen, disabled_features, disabled_groups,
                          wstr_plus=0, strong_warm_start=0)
 
-        dual_scale, gaps[t], _, _, n_iters[t] = model
+        dual_scale, gaps[t], screening_sizes_groups[t], screening_sizes_features[t], n_iters[t] = model
 
         betas[:, t] = beta_init.copy()
 
@@ -178,6 +178,4 @@ def sgl_path(X, y, size_groups, omega, lambdas=None, tau=0.5, lambda2=0,
                           '%i iterations: dual gap: %.3e'
                           % (max_iter, gaps[t]), ConvergenceWarning)
 
-    # return (betas, gaps, n_iters, screening_sizes_groups,
-    #         screening_sizes_features)
-    return (betas, gaps, n_iters, disabled_groups, disabled_features)
+    return (betas, gaps, n_iters, screening_sizes_groups, screening_sizes_features)
