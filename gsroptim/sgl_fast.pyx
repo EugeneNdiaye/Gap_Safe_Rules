@@ -511,11 +511,14 @@ def bcd_fast(double[::1, :] X, double[::1] y, double[::1] beta,
 
                 if double_tmp < 2 * lambda_ - lambda_prec:
                         disabled_groups[i] = 1
+                        n_active_groups -= 1
+                        n_active_features -= size_groups[i]
 
                 else:
                     for j in range(g_start[i], g_end):
                         if fabs(XTR[j]) < tau * (2 * lambda_ - lambda_prec):
                             disabled_features[j] = 1
+                            n_active_features -= 1
 
         for n_iter in range(max_iter):
 
