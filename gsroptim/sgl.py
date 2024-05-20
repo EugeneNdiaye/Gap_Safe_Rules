@@ -155,12 +155,14 @@ def sgl_path(X, y, size_groups, omega, lambdas=None, tau=0.5, lambda2=0,
 
         if strong_ws or active_ws:
 
-            bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
-                     n_samples, n_features, n_groups, size_groups, g_start,
-                     norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t],
-                     lambda_prec, lambda2, max_iter, f, tol,
-                     screen, disabled_features, disabled_groups,
-                     wstr_plus=active_ws, strong_warm_start=strong_ws)
+            model_ws = bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
+                                n_samples, n_features, n_groups, size_groups, g_start,
+                                norm2_X, norm2_X_g, nrm2_y, tau, lambdas[t],
+                                lambda_prec, lambda2, max_iter, f, tol,
+                                screen, disabled_features, disabled_groups,
+                                wstr_plus=active_ws, strong_warm_start=strong_ws)
+            
+            _, _, ssg, ssf, _ = model_ws
 
         model = bcd_fast(X, y, beta_init, XTR, residual, dual_scale, omega,
                          n_samples, n_features, n_groups, size_groups, g_start,
@@ -170,6 +172,9 @@ def sgl_path(X, y, size_groups, omega, lambdas=None, tau=0.5, lambda2=0,
                          wstr_plus=0, strong_warm_start=0)
 
         dual_scale, gaps[t], screening_sizes_groups[t], screening_sizes_features[t], n_iters[t] = model
+        if n_iters[t] <= 1:
+            # recapture the right screened size
+            screening_sizes_groups[t], screening_sizes_features[t] = ssg, ssf
 
         betas[:, t] = beta_init.copy()
 
