@@ -172,7 +172,7 @@ def sgl_path(X, y, size_groups, omega, lambdas=None, tau=0.5, lambda2=0,
                          wstr_plus=0, strong_warm_start=0)
 
         dual_scale, gaps[t], screening_sizes_groups[t], screening_sizes_features[t], n_iters[t] = model
-        if n_iters[t] <= 1:
+        if n_iters[t] <= 2:
             # recapture the right screened size
             screening_sizes_groups[t], screening_sizes_features[t] = ssg, ssf
 
