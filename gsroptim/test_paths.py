@@ -17,14 +17,20 @@ SCREEN_METHODS = [
     "active warm start", "active GS", "aggr. active GS"]
 
 
-def test_logreg_path():
+@pytest.mark.parametrize("sparse_X, init",
+                         itertools.product([True, False], [True, False]))
+def test_logreg_path(sparse_X, init):
     n_samples, n_features = 20, 100
     X, y = make_classification(n_samples=n_samples, n_features=n_features,
                                n_classes=2, random_state=0)
+    if sparse_X:
+        X = sparse.random(n_samples, n_features, random_state=2, format='csc',
+                          density=0.5)
     lambda_max = np.linalg.norm(X.T @ (0.5 - y), ord=np.inf)
     lambdas = lambda_max / np.arange(5, 30, 5)
     eps = 1e-8
-    betas, gaps = logreg_path(X, y, lambdas, eps=eps)[:2]
+    beta_init = np.zeros(n_features) if init else None
+    betas, gaps = logreg_path(X, y, lambdas, beta_init=beta_init, eps=eps)[:2]
     # beware that tol is scaled inside:
     n_1 = np.sum(y == 1)
     n_0 = n_samples - n_1
